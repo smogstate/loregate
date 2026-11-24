@@ -25,8 +25,15 @@
    [:pushed {:optional true} [:vector [:map {:closed true}
                                        [:attribute qualified-keyword?]
                                        [:op (into [:enum] ont/pushable-ops)]]]]
-   [:path {:optional true} string?]
+   [:path [:vector qualified-keyword?]]          ; links from the :from type; [] for it
    [:row-cap {:optional true} pos-int?]])
+
+(def Inputs
+  "What a plan reads, in ontology terms: one entry per source, ordered by path."
+  [:vector [:map {:closed true}
+            [:path [:vector qualified-keyword?]]
+            [:type qualified-keyword?]
+            [:attributes [:set qualified-keyword?]]]])
 
 (def Plan
   [:map {:closed true}

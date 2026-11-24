@@ -78,14 +78,14 @@
   {:plan/id (h "9")
    :plan/query spec-query
    :plan/sources
-   {:inv {:kind :service :type :biz/invoice :binding :bind/invoices-by-status
+   {:inv {:kind :service :type :biz/invoice :path [] :binding :bind/invoices-by-status
           :call {:service "invoicing" :query "invoices_by_status" :args {"status" "UNPAID"}}
           :pushed [{:attribute :biz/invoice-status :op :=}]
           :fields {:biz/client-id "client_id" :biz/amount "amount" :biz/due-date "due_date"
                    :biz/invoice-status "status"}
           :row-cap 200000}
-    :cl {:kind :parquet :type :biz/client :binding :bind/clients-parquet
-         :path "s3://lake/crm/clients/*.parquet"
+    :cl {:kind :parquet :type :biz/client :path [:biz.invoice/client] :binding :bind/clients-parquet
+         :parquet/path "s3://lake/crm/clients/*.parquet"
          :fields {:biz/client-id "id" :biz/client-name "name" :biz/region "region"}}}
    :plan/sql "WITH inv AS (…) SELECT …"
    :plan/sql-params [{:value "UNPAID"} {:param :min-days} {:clock :today} {:user :roles}

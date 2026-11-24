@@ -22,8 +22,17 @@
   (c/compile-query (:ontology sys) query {:sources (:sources sys)
                                           :max-limit (get-in sys [:config :max-limit])}))
 
+(defn inputs
+  "What a plan reads, per source: [{:path [links…] :type t :attributes #{…}}], ordered by
+  path ([] is the :from type). Ontology terms only. The keys of :relations are these paths."
+  [plan]
+  (->> (vals (:plan/sources plan))
+       (map (fn [{:keys [path type fields]}] {:path path :type type :attributes (set (keys fields))}))
+       (sort-by (juxt (comp count :path) (comp str :path)))
+       vec))
+
 (defn- summary [plan]
-  (select-keys plan [:plan/id :plan/output :plan/params]))
+  (assoc (select-keys plan [:plan/id :plan/output :plan/params]) :plan/inputs (inputs plan)))
 
 (defn compile
   "Compile and keep a plan: {:plan/id :plan/output :plan/params}, or {:errors […]}."
@@ -53,7 +62,7 @@
 (defn run
   "Run a plan for a user: rows + notes, or {:error …}. `req`: :plan-id, :params, :user,
   optionally :query (used when the plan is not held). Library only: :relations (rows per
-  source alias, in ontology names) and :clock ({:now inst :zone \"…\"})."
+  source path, as in :plan/inputs, in ontology names) and :clock ({:now inst :zone \"…\"})."
   [sys {:keys [plan-id query user] :as req}]
   (if-not user
     {:error :auth/missing-token}
@@ -81,5 +90,6 @@
       plan
       (let [changed (run/stale (:ontology sys) plan)]
         (assoc (select-keys plan [:plan/id :plan/output :plan/params :plan/pins])
+               :plan/inputs (inputs plan)
                :stale? (boolean (seq changed))
                :changed changed)))))

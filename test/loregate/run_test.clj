@@ -106,8 +106,16 @@
 (deftest supplied-relations-give-the-same-rows
   (let [sys (ts/system)
         {:plan/keys [id]} (lg/compile sys spec-query)
-        relations {:invoice (ts/ontology-rows :bind/invoices-parquet)
-                   :client (ts/ontology-rows :bind/clients-parquet)}]
+        relations {[] (ts/ontology-rows :bind/invoices-parquet)
+                   [:biz.invoice/client] (ts/ontology-rows :bind/clients-parquet)}]
+    (testing "a client learns what to supply from :plan/inputs, in ontology terms"
+      (is (= [{:path [] :type :biz/invoice
+               :attributes #{:biz/amount :biz/client-id :biz/due-date :biz/invoice-status}}
+              {:path [:biz.invoice/client] :type :biz/client
+               :attributes #{:biz/client-id :biz/client-name}}]
+             (:plan/inputs (lg/compile sys spec-query))
+             (:plan/inputs (lg/plan-status sys {:plan-id id}))))
+      (is (= (set (keys relations)) (set (map :path (:plan/inputs (lg/compile sys spec-query)))))))
     (is (= (run-query sys spec-query)
            (:rows (lg/run sys {:plan-id id :user ts/ana :clock ts/clock :relations relations}))))
     (testing "a different clock gives a different, deterministic answer"
@@ -118,10 +126,10 @@
     (testing "a value the binding cannot store is a schema mismatch"
       (is (= :source/schema-mismatch
              (:error (lg/run sys {:plan-id id :user ts/ana :clock ts/clock
-                                  :relations (assoc relations :invoice [{:biz/invoice-status :biz.status/void}])}))))
+                                  :relations (assoc relations [] [{:biz/invoice-status :biz.status/void}])}))))
       (is (= :source/schema-mismatch
              (:error (lg/run sys {:plan-id id :user ts/ana :clock ts/clock
-                                  :relations (assoc relations :invoice [{:biz/invoice-status :biz.status/unpaid
+                                  :relations (assoc relations [] [{:biz/invoice-status :biz.status/unpaid
                                                                          :biz/amount "not a number"
                                                                          :biz/due-date "2026-01-01"}])})))))))
 

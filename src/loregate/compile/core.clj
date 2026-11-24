@@ -98,7 +98,7 @@
                               (r/err! ctx [:from] :compile/invalid-binding :binding (:binding/id bnd)
                                       :details (src/check (get sources (:binding/kind bnd)) bnd))
                               :else
-                              {:alias alias :type type :type-info ti :binding bnd :needed needed :link link
+                              {:alias alias :type type :type-info ti :binding bnd :needed needed :link link :path path
                                :parent-alias (when parent (get-in @ctx [:sources parent :alias]))})))]
             (if-let [errors (seq (:errors @ctx))]
               {:errors (vec errors)}
@@ -107,9 +107,9 @@
                                                         :params (:params q)})
                     pin-ids (concat (map :type srcs) (:links @ctx) (:defs @ctx) (map (comp :binding/id :binding) srcs))
                     plan {:plan/query q
-                          :plan/sources (into {} (for [{:keys [alias type binding needed]} srcs]
+                          :plan/sources (into {} (for [{:keys [alias type binding needed path]} srcs]
                                                    [alias (cond-> (merge (into {} (remove (comp #{"binding"} namespace key)) binding)
-                                                                         {:kind (:binding/kind binding) :type type
+                                                                         {:kind (:binding/kind binding) :type type :path path
                                                                           :binding (:binding/id binding)
                                                                           :fields (select-keys (:binding/fields binding) needed)})
                                                             (seq (select-keys (:binding/values binding) needed))

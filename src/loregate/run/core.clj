@@ -76,7 +76,7 @@
 
 (defn run-plan
   "Rows and notes, or {:error …}. `system` holds :ontology, :sources and :config;
-  `opts` :params, :user, :relations (rows per source alias, library only) and :clock
+  `opts` :params, :user, :relations (rows per source path, library only) and :clock
   ({:now inst :zone \"…\"}) in place of the system clock."
   [{:keys [ontology sources config]} plan {:keys [params relations clock]}]
   (let [changed (stale ontology plan)
@@ -95,8 +95,8 @@
                                  :else (jdbc-value value)))
                          (:plan/sql-params plan))
             rels (vec (for [[alias s] (sort-by key (:plan/sources plan))]
-                        (if (contains? relations alias)
-                          (supplied-relation alias s (vec (get relations alias)))
+                        (if (contains? relations (:path s))
+                          (supplied-relation alias s (vec (get relations (:path s))))
                           (assoc (src/relation (get sources (:kind s)) s) :alias alias))))
             explicit-limit? (contains? (:plan/query plan) :limit)
             max-rows (if explicit-limit? Long/MAX_VALUE (:max-rows config))]
