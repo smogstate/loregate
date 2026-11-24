@@ -128,3 +128,22 @@ Done when a named plan returns the same rows as running it by id: **passing**
   output and params. Names follow tool-name rules so an agent interface can expose them.
 - No MCP server: HTTP is the only transport in v1 (SPEC 10.1); an MCP adapter would wrap
   `describe`, `query`, `run` and `run-named` from `loregate.core`.
+
+## Phase 7 — Packaging for other teams (2026-11-24)
+
+Done when a second deployment with its own ontology file, identity provider and Parquet
+location runs the fixture queries without a code change, and every shipped adapter passes
+its kit: **passing** (`clojure -M:test`, 50 tests, 353 assertions). The jar was built and
+served a request.
+
+- Settings: defaults in `config.clj`, an EDN file over them, `LOREGATE_…` variables over
+  both (only for settings that exist). `loregate.main` builds the whole system from them.
+- Conformance kits (`loregate.conformance`): ontology, store, source, identity, redaction;
+  plain functions returning failures. Every shipped adapter passes; a broken one is caught.
+- JSON Schema export (`clojure -M:json-schema`), via malli.
+- Jar without tools.build (the Maven mirror is unreachable here): `build/uberjar.clj` AOT-
+  compiles only `loregate.launch` and copies the classpath, keeping entry times — newer
+  `.clj` than `.class` makes Clojure mix source and compiled namespaces and break.
+- Dockerfile; `docs/operators.md`.
+- Not done: an MCP adapter, a Lambda host adapter (the HTTP handler is a plain function, so
+  one wraps it), the Loretile ontology and store adapters (their API is not fixed), ES256.

@@ -11,6 +11,15 @@
          :jvm-opts    ["--enable-native-access=ALL-UNNAMED"]
          :main-opts   ["-m" "loregate.test-runner"]}
   ;; regenerate dev/fixtures/data/*.parquet from dev/fixtures/data.edn
+  ;; serve over HTTP from a settings file: clojure -M:serve settings.edn
+  :serve {:jvm-opts  ["--enable-native-access=ALL-UNNAMED"]
+          :main-opts ["-m" "loregate.main"]}
+  ;; JSON Schema of the contract for non-Clojure clients: clojure -M:json-schema out/
+  :json-schema {:main-opts ["-m" "loregate.schema.json"]}
+  ;; target/loregate.jar with Clojure and the JDK only: clojure -M:uberjar
+  :uberjar {:extra-paths ["build" "target/classes"]
+            :jvm-opts  ["--enable-native-access=ALL-UNNAMED"]
+            :main-opts ["-m" "uberjar"]}
   :fixtures {:extra-paths ["dev"]
              :jvm-opts    ["--enable-native-access=ALL-UNNAMED"]
              :main-opts   ["-m" "loregate.fixtures"]}}}
