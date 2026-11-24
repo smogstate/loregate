@@ -1,0 +1,13 @@
+;; Fixture users, as loregate.auth yields them (SPEC 8.1).
+;; ana:  finance + crm-admin, EU     → sees all clients and amounts
+;; bob:  no roles, US, group legal-us → US clients only, no amounts, some contracts by grant
+;; cleo: legal, EU                    → EU clients, all contract values where she may read the row
+[{:user/id "ana"
+  :user/attrs {:roles #{"role:finance" "role:crm-admin"} :region "EU"
+               :principals #{"user:ana" "group:finance"}}}
+ {:user/id "bob"
+  :user/attrs {:roles #{} :region "US"
+               :principals #{"user:bob" "group:legal-us"}}}
+ {:user/id "cleo"
+  :user/attrs {:roles #{"role:legal"} :region "EU"
+               :principals #{"user:cleo" "group:legal-eu"}}}]

@@ -1,0 +1,133 @@
+;; Fixture ontology: the SPEC examples, plus what later phases test against.
+;; - invoices: a service binding (phase 4) and a Parquet binding (phases 1-3)
+;; - clients: Parquet, row rule by role or region
+;; - contracts: Parquet, per-row grants (row and field level)
+[;; ---------------------------------------------------------------- types
+ {:type/id    :biz/invoice
+  :type/title "Invoice"
+  :type/owner "team:finance"
+  :type/definition "A request for payment issued to a client."
+  :type/key   [:biz/invoice-id]
+  :type/attributes
+  {:biz/invoice-id     {:type :string}
+   :biz/client-id      {:type :string}
+   :biz/amount         {:type :decimal :scale 2 :unit :currency/eur}
+   :biz/due-date       {:type :date}
+   :biz/invoice-status {:type :enum :values #{:biz.status/paid :biz.status/unpaid}}}}
+
+ {:type/id    :biz/client
+  :type/title "Client"
+  :type/owner "team:crm"
+  :type/definition "A company we invoice."
+  :type/key   [:biz/client-id]
+  :type/attributes
+  {:biz/client-id   {:type :string}
+   :biz/client-name {:type :string}
+   :biz/region      {:type :string}}}
+
+ {:type/id    :biz/contract
+  :type/title "Contract"
+  :type/owner "team:legal"
+  :type/definition "A signed agreement with a client."
+  :type/key   [:biz/contract-id]
+  :type/attributes
+  {:biz/contract-id             {:type :string}
+   :biz/client-id               {:type :string}
+   :biz/contract-value          {:type :decimal :scale 2 :unit :currency/eur}
+   :biz/contract-readers        {:type :set :of :string}
+   :biz/contract-value-readers  {:type :set :of :string}}}
+
+ ;; ---------------------------------------------------------------- links
+ {:link/id   :biz.invoice/client
+  :link/from :biz/invoice
+  :link/to   :biz/client
+  :link/on   [[:biz/client-id :biz/client-id]]
+  :link/cardinality :many-to-one}
+
+ {:link/id   :biz.contract/client
+  :link/from :biz/contract
+  :link/to   :biz/client
+  :link/on   [[:biz/client-id :biz/client-id]]
+  :link/cardinality :many-to-one}
+
+ ;; ---------------------------------------------------------------- definitions
+ {:def/id :biz/days-overdue :def/on :biz/invoice :def/kind :attribute
+  :def/owner "team:finance" :def/type :int
+  :def/expr [:days-between :biz/due-date [:today]]}
+
+ {:def/id :biz/unpaid-total :def/on :biz/invoice :def/kind :measure
+  :def/owner "team:finance" :def/type :decimal :def/unit :currency/eur
+  :def/expr  [:sum :biz/amount]
+  :def/where [:= :biz/invoice-status :biz.status/unpaid]}
+
+ {:def/id :biz/contract-total :def/on :biz/contract :def/kind :measure
+  :def/owner "team:legal" :def/type :decimal :def/unit :currency/eur
+  :def/expr [:sum :biz/contract-value]}
+
+ ;; ---------------------------------------------------------------- bindings
+ {:binding/id   :bind/invoices-by-status
+  :binding/type :biz/invoice
+  :binding/kind :service
+  :service/name "invoicing" :service/query "invoices_by_status"
+  :binding/fields  {:biz/invoice-id "id" :biz/client-id "client_id" :biz/amount "amount"
+                    :biz/due-date "due_date" :biz/invoice-status "status"}
+  :binding/values  {:biz/invoice-status {:biz.status/paid "PAID" :biz.status/unpaid "UNPAID"}}
+  :binding/accepts {:biz/invoice-status {:arg "status" :ops #{:=}}}
+  :binding/required #{:biz/invoice-status}
+  :binding/row-cap  200000
+  :binding/priority 10
+  :binding/rows-enforced-by :service}
+
+ {:binding/id   :bind/invoices-parquet
+  :binding/type :biz/invoice
+  :binding/kind :parquet
+  :parquet/path "dev/fixtures/data/invoices.parquet"
+  :binding/fields {:biz/invoice-id "id" :biz/client-id "client_id" :biz/amount "amount"
+                   :biz/due-date "due_date" :biz/invoice-status "status"}
+  :binding/values {:biz/invoice-status {:biz.status/paid "PAID" :biz.status/unpaid "UNPAID"}}
+  :binding/rows-enforced-by :layer}
+
+ {:binding/id   :bind/clients-parquet
+  :binding/type :biz/client
+  :binding/kind :parquet
+  :parquet/path "dev/fixtures/data/clients.parquet"
+  :binding/fields {:biz/client-id "id" :biz/client-name "name" :biz/region "region"}
+  :binding/rows-enforced-by :layer}
+
+ {:binding/id   :bind/contracts-parquet
+  :binding/type :biz/contract
+  :binding/kind :parquet
+  :parquet/path "dev/fixtures/data/contracts.parquet"
+  :binding/fields {:biz/contract-id "id" :biz/client-id "client_id"
+                   :biz/contract-value "value" :biz/contract-readers "readers"
+                   :biz/contract-value-readers "value_readers"}
+  :binding/rows-enforced-by :layer}
+
+ ;; ---------------------------------------------------------------- rules
+ ;; invoices over Parquet are opened deliberately; clients and amounts are restricted
+ {:rule/on :biz/invoice :rule/kind :rows :rule/allow true}
+
+ {:rule/on :biz/client :rule/kind :rows
+  :rule/allow [:or [:in "role:crm-admin" [:user :roles]]
+                   [:= :biz/region [:user :region]]]}
+
+ {:rule/on :biz/amount :rule/kind :field
+  :rule/visible [:in "role:finance" [:user :roles]]}
+
+ {:rule/on :biz/contract :rule/kind :rows
+  :rule/allow [:overlaps :biz/contract-readers [:user :principals]]}
+
+ {:rule/on :biz/contract-value :rule/kind :field
+  :rule/visible [:or [:in "role:legal" [:user :roles]]
+                     [:overlaps :biz/contract-value-readers [:user :principals]]]}
+
+ {:rule/on :biz/contract-readers :rule/kind :field
+  :rule/visible [:in "role:legal" [:user :roles]]}
+
+ {:rule/on :biz/contract-value-readers :rule/kind :field
+  :rule/visible [:in "role:legal" [:user :roles]]}
+
+ ;; ---------------------------------------------------------------- commands
+ {:command/id :biz.invoice/cancel :command/on :biz/invoice
+  :command/params [:map [:reason :string]]
+  :command/service "invoicing" :command/endpoint "cancel_invoice"}]

@@ -1,0 +1,34 @@
+;; Source rows for dev/fixtures/data/*.parquet, in storage terms (column names and stored
+;; values as the bindings map them). Regenerate with: clojure -M:fixtures
+{:clients
+ {:columns [["id" "VARCHAR"] ["name" "VARCHAR"] ["region" "VARCHAR"]]
+  :rows [["c1" "ACME"     "EU"]
+         ["c2" "Globex"   "US"]
+         ["c3" "Initech"  "US"]
+         ["c4" "Umbrella" "EU"]
+         ["c5" "Hooli"    "US"]]}
+
+ :invoices
+ {:columns [["id" "VARCHAR"] ["client_id" "VARCHAR"] ["amount" "DECIMAL(18,2)"]
+            ["due_date" "DATE"] ["status" "VARCHAR"]]
+  :rows [["i01" "c1" "1200.00" "2026-08-01" "UNPAID"]
+         ["i02" "c1"  "800.50" "2026-09-15" "PAID"]
+         ["i03" "c1" "3000.00" "2026-10-01" "UNPAID"]
+         ["i04" "c2"  "450.00" "2026-07-20" "UNPAID"]
+         ["i05" "c2"  "990.99" "2026-11-30" "UNPAID"]
+         ["i06" "c2" "1500.00" "2026-06-01" "PAID"]
+         ["i07" "c3"  "300.00" "2026-09-01" "UNPAID"]
+         ["i08" "c3"  "300.00" "2026-09-01" "UNPAID"]
+         ["i09" "c4" "7200.00" "2026-05-05" "UNPAID"]
+         ["i10" "c4"  "100.00" "2026-12-24" "PAID"]
+         ["i11" "c5"  "650.00" "2026-10-31" "UNPAID"]
+         ["i12" "c9"  "999.00" "2026-08-08" "UNPAID"]]}   ; c9: a client nobody has
+
+ :contracts
+ {:columns [["id" "VARCHAR"] ["client_id" "VARCHAR"] ["value" "DECIMAL(18,2)"]
+            ["readers" "VARCHAR[]"] ["value_readers" "VARCHAR[]"]]
+  :rows [["k1" "c1" "50000.00" ["group:legal-eu" "user:ana"] ["user:ana"]]
+         ["k2" "c2" "12000.00" ["group:legal-us" "user:cleo"] ["group:legal-us"]]
+         ["k3" "c3"  "8000.00" ["group:legal-us"] []]
+         ["k4" "c4" "99000.00" ["group:legal-eu"] []]
+         ["k5" "c5"  "1000.00" [] []]]}}                 ; k5: readable by no one
