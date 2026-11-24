@@ -68,3 +68,20 @@ Done when the redaction-equivalence test (14.3) passes for generated queries and
   users makes it fail.
 - Fixed: `list_contains(coll, x)` bound x's parameters before coll's (phase 1 bug); an
   unresolved operand crashed the type checker instead of reporting `:compile/unknown-name`.
+
+## Phase 3 — HTTP and auth (2026-11-24)
+
+Done when a client can go from describe to rows with a token and nothing else: **passing**
+(`clojure -M:test`, 34 tests, 266 assertions; the HTTP test signs real RS256 tokens and
+talks to the server over a socket).
+
+- `loregate.auth.oidc`: RS256 against the issuer's JWKS (JDK crypto, no JWT library),
+  issuer, audience, exp/nbf with leeway, truncated-groups refusal, claim map, principals.
+  ponytail: RS256 only; add ES256 when an identity provider needs it.
+- `loregate.api.http`: one handler (request map → response map) and a JDK `HttpServer` on
+  virtual threads. A Lambda host wraps the same handler later. Unexpected exceptions become
+  `{:error :internal}` with no detail.
+- `loregate.api.wire`: EDN and JSON bodies; the JSON naming rules (SPEC 10). New dependency:
+  `org.clojure/data.json` (pure Clojure).
+- `describe`: types, attributes with `:visible?` true/false/:per-row for the caller (user-level
+  rules evaluated by DuckDB, as in runs), links, definitions, commands; never bindings or rules.

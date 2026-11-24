@@ -27,7 +27,8 @@
     :params/invalid
     :source/timeout :source/unavailable :source/schema-mismatch :source/row-cap-exceeded
     :budget/busy
-    :store/not-supported})
+    :store/not-supported
+    :request/invalid :auth/forbidden :internal})
 
 (def RunError
   [:map

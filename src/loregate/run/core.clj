@@ -74,6 +74,13 @@
         (instance? LocalDateTime v) (Date/from (.toInstant ^LocalDateTime v ZoneOffset/UTC))
         :else v))
 
+(defn evaluate-checks
+  "rule-id → visible? for `user`, evaluating user-level field rules (plan :plan/checks)."
+  [{:keys [sql params rules]} user]
+  (let [attrs (:user/attrs user)
+        values (mapv (fn [d] (if (contains? d :user) (get attrs (:user d)) (jdbc-value (:value d)))) params)]
+    (zipmap rules (map true? (duck/evaluate sql values)))))
+
 (defn run-plan
   "Rows and notes, or {:error …}. `system` holds :ontology, :sources and :config;
   `opts` :params, :user, :relations (rows per source path, library only) and :clock

@@ -4,6 +4,7 @@
   (:refer-clojure :exclude [compile])
   (:require [loregate.compile.core :as c]
             [loregate.config :as config]
+            [loregate.ontology.port :as o]
             [loregate.run.core :as run]
             [loregate.store.none :as none]
             [loregate.store.port :as store]))
@@ -81,6 +82,40 @@
         plan
         (do (swap! (:cache sys) assoc (:plan/id plan) plan)
             (run/run-plan sys plan req))))))
+
+(defn- visible? [sys type attr user]
+  (let [{:keys [level checks]} (c/field-check (:ontology sys) type attr)]
+    (case level
+      nil true
+      :row :per-row
+      :user (boolean (some-> (seq (:rules checks)) first ((run/evaluate-checks checks user)))))))
+
+(defn- describe-type [sys id user]
+  (when-let [t (o/type-of (:ontology sys) id)]
+    {:type/id id :type/title (:type/title t) :type/owner (:type/owner t)
+     :type/definition (:type/definition t) :type/key (:type/key t)
+     :attributes (vec (for [[a decl] (sort-by (comp str key) (:type/attributes t))]
+                        (assoc (select-keys decl [:type :of :values :unit :nullable?])
+                               :id a :visible? (visible? sys id a user))))
+     :links (mapv #(select-keys % [:link/id :link/to :link/cardinality]) (:type/links t))
+     :definitions (mapv #(select-keys % [:def/id :def/kind :def/type :def/unit :def/owner]) (:type/defs t))
+     :commands (mapv #(select-keys % [:command/id :command/params :command/service :command/endpoint])
+                     (:type/commands t))}))
+
+(defn describe
+  "Types, attributes (with :visible? for `user`: true, false or :per-row), links,
+  definitions and commands (SPEC 10). Never bindings or rules. `req`: :types (ids) or
+  :search (text), and :user. With neither, every type."
+  [sys {:keys [types search user]}]
+  (if-not user
+    {:error :auth/missing-token}
+    (let [onto (:ontology sys)
+          matches (when search (o/search onto search))
+          ids (cond (seq types) types
+                    search (distinct (map #(if (= :type (:kind %)) (:id %) (:on %)) matches))
+                    :else (map :type/id (o/types onto)))]
+      (cond-> {:types (vec (keep #(describe-type sys % user) ids))}
+        search (assoc :matches matches)))))
 
 (defn plan-status
   "Output, params, pins and staleness of a plan. Depends on no user's rights."

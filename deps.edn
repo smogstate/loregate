@@ -1,7 +1,8 @@
 {:paths ["src"]
  :deps  {org.clojure/clojure    {:mvn/version "1.12.4"}
          metosin/malli          {:mvn/version "0.20.3"}
-         org.duckdb/duckdb_jdbc {:mvn/version "1.1.3"}}
+         org.duckdb/duckdb_jdbc {:mvn/version "1.1.3"}
+         org.clojure/data.json  {:mvn/version "2.5.2"}}   ; JSON bodies and JWKS; pure Clojure
  :aliases
  {:dev  {:extra-paths ["dev"]
          :jvm-opts    ["--enable-native-access=ALL-UNNAMED"]}

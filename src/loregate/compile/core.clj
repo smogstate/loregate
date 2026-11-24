@@ -71,6 +71,22 @@
                              [attr {:rule [:field attr] :ir ir
                                     :level (if (some #(= ::r/col (first %)) (nodes ir)) :row :user)}]))}))
 
+(defn field-check
+  "How the field rule of `attr` applies on `type`, outside any query: nil (no rule, or
+  literally true: visible), {:level :row}, or {:level :user :checks …} to evaluate per user.
+  Used by describe (SPEC 10)."
+  [onto type attr]
+  (let [ctx (r/new-ctx onto nil)
+        alias (r/source! ctx [] type nil)
+        ti (r/type-info ctx type)
+        fr (some #(when (and (= :field (:rule/kind %)) (= attr (:rule/on %))) %) (:type/rules ti))]
+    (when fr
+      (let [ir (rule-ir ctx {:params {} :alias-types {alias type}} [] type [:rule :field attr] (:rule/visible fr))]
+        (cond (seq (:errors @ctx)) {:level :user :checks (sql/checks [])} ; ponytail: a broken rule reads as hidden
+              (nil? ir) nil
+              (some #(= ::r/col (first %)) (nodes ir)) {:level :row}
+              :else {:level :user :checks (sql/checks [[[:field attr] ir]])})))))
+
 (defn compile-query
   "A plan, or {:errors […]}. Options: :sources {kind adapter} (registered source adapters),
   :max-limit (default 10000), :now (for :plan/compiled-at)."
