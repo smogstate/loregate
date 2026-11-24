@@ -1,0 +1,17 @@
+# kept local, not published
+SPEC.md
+
+# Clojure / JVM
+.cpcache/
+.nrepl-port
+.clj-kondo/.cache/
+.lsp/.cache/
+target/
+*.jar
+*.class
+
+# local tooling
+.loom/
+.idea/
+.vscode/
+.DS_Store
