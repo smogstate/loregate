@@ -53,6 +53,11 @@
                     [:rules [:set RuleId]]]]
    [:plan/output [:vector {:min 1} Column]]
    [:plan/pins [:map-of [:or qualified-keyword? RuleId] Hash]]
+   [:plan/rules [:map {:closed true}
+                 [:rows [:set qualified-keyword?]]                       ; types whose rows a rule filters
+                 [:fields [:map-of qualified-keyword? [:enum :user :row]]]]]   ; masked attributes, by rule level
+   [:plan/checks [:map {:closed true}                                   ; user-level field rules, evaluated once per run
+                  [:sql string?] [:params vector?] [:rules [:vector RuleId]]]]
    [:plan/compiler pos-int?]
    [:plan/compiled-at inst?]])
 

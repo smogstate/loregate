@@ -1,8 +1,12 @@
 #:plan{:id
-       "sha256:a3d48fb29c9969ec69c5699b82978d45f789a0cb5532003ac8b0ccc9fb571f50",
+       "sha256:81eb8f79179e2b7afb2736d6f4c4a5af350a752285478d1752da994571042c42",
        :sql
-       "WITH \"client\" AS (SELECT CAST(\"name\" AS VARCHAR) AS \"biz/client-name\", CAST(json_extract_string(\"attrs\", '$.segment') AS VARCHAR) AS \"biz/client-segment\", CAST(json_extract_string(\"attrs\", '$.tags[*]') AS VARCHAR[]) AS \"biz/client-tags\" FROM \"src_client\") SELECT CAST(\"client\".\"biz/client-name\" AS VARCHAR) AS \"biz/client-name\", CAST(\"client\".\"biz/client-tags\" AS VARCHAR[]) AS \"biz/client-tags\" FROM \"client\" WHERE (\"client\".\"biz/client-segment\" = CAST(? AS VARCHAR)) ORDER BY 1 ASC NULLS LAST, 2 ASC NULLS LAST",
-       :sql-params [{:value "smb"}],
+       "WITH \"client\" AS (SELECT \"client\".\"biz/client-name\" AS \"biz/client-name\", \"client\".\"biz/client-segment\" AS \"biz/client-segment\", \"client\".\"biz/client-tags\" AS \"biz/client-tags\" FROM (SELECT CAST(\"name\" AS VARCHAR) AS \"biz/client-name\", CAST(json_extract_string(\"attrs\", '$.segment') AS VARCHAR) AS \"biz/client-segment\", CAST(json_extract_string(\"attrs\", '$.tags[*]') AS VARCHAR[]) AS \"biz/client-tags\", CAST(\"region\" AS VARCHAR) AS \"biz/region\" FROM \"src_client\") AS \"client\" WHERE (list_contains(CAST(? AS VARCHAR[]), CAST(? AS VARCHAR)) OR (\"client\".\"biz/region\" = CAST(? AS VARCHAR)))) SELECT CAST(\"client\".\"biz/client-name\" AS VARCHAR) AS \"biz/client-name\", CAST(\"client\".\"biz/client-tags\" AS VARCHAR[]) AS \"biz/client-tags\" FROM \"client\" WHERE (\"client\".\"biz/client-segment\" = CAST(? AS VARCHAR)) ORDER BY 1 ASC NULLS LAST, 2 ASC NULLS LAST",
+       :sql-params
+       [{:user :roles}
+        {:value "role:crm-admin"}
+        {:user :region}
+        {:value "smb"}],
        :sources
        {:client
         {:parquet/path "dev/fixtures/data/clients.parquet",
@@ -13,6 +17,7 @@
          :fields
          #:biz{:client-segment ["attrs" "$.segment"],
                :client-name "name",
+               :region "region",
                :client-tags ["attrs" "$.tags[*]"]}}},
        :output
        [{:name :biz/client-name, :type :string, :owned? true}

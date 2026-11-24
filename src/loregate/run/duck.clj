@@ -42,8 +42,24 @@
           :source/schema-mismatch
           (str/includes? m "IO Error") :source/unavailable)))
 
+(defn- bind! [^Connection c ps params]
+  (doseq [[i v] (map-indexed vector params)]
+    (.setObject ^java.sql.PreparedStatement ps (int (inc i))
+                (if (coll? v) (.createArrayOf c "VARCHAR" (object-array (map str v))) v))))
+
+(defn evaluate
+  "The single row of a parameterised SELECT, as a vector (used for field-rule checks)."
+  [sql params]
+  (with-open [c (DriverManager/getConnection "jdbc:duckdb:")
+              ps (.prepareStatement c sql)]
+    (bind! c ps params)
+    (with-open [rs (.executeQuery ps)]
+      (.next rs)
+      (mapv #(.getObject rs (int %)) (range 1 (inc (.getColumnCount (.getMetaData rs))))))))
+
 (defn execute
-  "{:rows [[v …] …]} with at most `max-rows` + 1 rows, or {:error kind}."
+  "{:rows [[v …] …]} with at most `max-rows` + 1 rows, or {:error kind}. A collection
+  parameter is bound as a VARCHAR list (the SQL casts it)."
   [{:keys [relations sql params max-rows memory-limit threads]}]
   (try
     (with-open [c (DriverManager/getConnection "jdbc:duckdb:")]
@@ -51,7 +67,7 @@
       (exec! c (str "SET threads=" (long threads)))
       (run! #(attach! c %) relations)
       (with-open [ps (.prepareStatement c sql)]
-        (doseq [[i v] (map-indexed vector params)] (.setObject ps (int (inc i)) v))
+        (bind! c ps params)
         (with-open [rs (.executeQuery ps)]
           (let [n (.getColumnCount (.getMetaData rs))]
             (loop [rows []]

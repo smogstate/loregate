@@ -36,6 +36,41 @@
     (= :set (:type type)) (assoc :of (:of type))
     (:unit type) (assoc :unit (:unit type))))
 
+(defn- trivially-true? [rule-expr] (true? rule-expr))
+
+(defn- rule-ir
+  "Resolve and type a rule expression in the scope of one source: stored attributes of
+  its type and [:user k] only. Nil when it is literally `true`."
+  [ctx env path type at expr]
+  (when-not (trivially-true? expr)
+    (let [ir (r/resolve-expr ctx {:path path :type type :stack #{} :rule? true} at expr)
+          [ir' t] (tc/check ctx env at ir)]
+      (when-not (#{:boolean ::tc/error :user} (:type t))
+        (r/err! ctx at :compile/type-mismatch :reason :rule-not-boolean))
+      ir')))
+
+(defn- source-rules
+  "Row rule (layer-enforced sources only) and field rules of the attributes a source
+  provides (SPEC 8.2). Fails closed: a layer-enforced type with no row rule is refused."
+  [ctx env path ti bnd needed]
+  (let [type (:type/id ti)
+        rules (:type/rules ti)
+        row (some #(when (and (= :rows (:rule/kind %)) (= type (:rule/on %))) %) rules)
+        layer? (= :layer (:binding/rows-enforced-by bnd))
+        fields (for [attr needed
+                     :let [fr (some #(when (and (= :field (:rule/kind %)) (= attr (:rule/on %))) %) rules)]
+                     :when fr]
+                 [attr fr])]
+    (when (and layer? (nil? row))
+      (r/err! ctx [:from] :compile/no-row-rule :type type))
+    {:row-rule (when (and layer? row) (rule-ir ctx env path type [:rule :rows type] (:rule/allow row)))
+     :rule-ids (concat (when (and layer? row) [[:rows type]]) (map (fn [[a _]] [:field a]) fields))
+     :field-rules (into {} (for [[attr fr] fields
+                                 :let [ir (rule-ir ctx env path type [:rule :field attr] (:rule/visible fr))]
+                                 :when ir]
+                             [attr {:rule [:field attr] :ir ir
+                                    :level (if (some #(= ::r/col (first %)) (nodes ir)) :row :user)}]))}))
+
 (defn compile-query
   "A plan, or {:errors […]}. Options: :sources {kind adapter} (registered source adapters),
   :max-limit (default 10000), :now (for :plan/compiled-at)."
@@ -98,16 +133,26 @@
                               (r/err! ctx [:from] :compile/invalid-binding :binding (:binding/id bnd)
                                       :details (src/check (get sources (:binding/kind bnd)) bnd))
                               :else
-                              {:alias alias :type type :type-info ti :binding bnd :needed needed :link link :path path
-                               :parent-alias (when parent (get-in @ctx [:sources parent :alias]))})))]
+                              (merge {:alias alias :type type :type-info ti :binding bnd :needed needed :link link :path path
+                                      :parent-alias (when parent (get-in @ctx [:sources parent :alias]))}
+                                     (source-rules ctx env path ti bnd needed)))))]
             (if-let [errors (seq (:errors @ctx))]
               {:errors (vec errors)}
-              (let [{:keys [sql params]} (sql/generate {:sources srcs :select items :where where :having having
+              (let [srcs (mapv #(assoc % :rule-needed (get-in @ctx [:sources (:path %) :rule-needed])) srcs)
+                    {:keys [sql params]} (sql/generate {:sources srcs :select items :where where :having having
                                                         :group group :order order :limit (:limit q)
                                                         :params (:params q)})
-                    pin-ids (concat (map :type srcs) (:links @ctx) (:defs @ctx) (map (comp :binding/id :binding) srcs))
+                    rule-ids (into (sorted-set-by #(compare (str %1) (str %2))) (mapcat :rule-ids) srcs)
+                    field-rules (into {} (mapcat :field-rules) srcs)
+                    user-checks (distinct (for [[_ {:keys [level rule ir]}] (sort-by (comp str key) field-rules)
+                                                :when (= :user level)]
+                                            [rule ir]))
+                    rule-irs (concat (keep :row-rule srcs) (map :ir (vals field-rules)))
+                    pin-ids (concat (map :type srcs) (:links @ctx) (:defs @ctx) (map (comp :binding/id :binding) srcs)
+                                    rule-ids)
                     plan {:plan/query q
-                          :plan/sources (into {} (for [{:keys [alias type binding needed path]} srcs]
+                          :plan/sources (into {} (for [{:keys [alias type binding path] :as s} srcs
+                                                       :let [needed (into (set (:needed s)) (:rule-needed s))]]
                                                    [alias (cond-> (merge (into {} (remove (comp #{"binding"} namespace key)) binding)
                                                                          {:kind (:binding/kind binding) :type type :path path
                                                                           :binding (:binding/id binding)
@@ -118,8 +163,12 @@
                           :plan/sql sql
                           :plan/sql-params params
                           :plan/params (or (:params q) {})
-                          :plan/user #{}
-                          :plan/requires {:fields (into #{} (mapcat :needed) srcs) :rules #{}}
+                          :plan/user (into #{} (comp (mapcat nodes) (filter #(= ::r/user (first %))) (map second)) rule-irs)
+                          :plan/requires {:fields (into #{} (mapcat #(into (set (:needed %)) (:rule-needed %))) srcs)
+                                          :rules (set rule-ids)}
+                          :plan/rules {:rows (into #{} (comp (filter :row-rule) (map :type)) srcs)
+                                       :fields (into {} (for [[a {:keys [level]}] field-rules] [a level]))}
+                          :plan/checks (sql/checks user-checks)
                           :plan/output (mapv column items)
                           :plan/pins (into {} (for [id pin-ids] [id (o/hash-of onto id)]))
                           :plan/compiler version}]

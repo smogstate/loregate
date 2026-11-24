@@ -12,7 +12,16 @@
 (defn ontology [] (read-edn "ontology.edn"))
 (defn users    [] (read-edn "users.edn"))
 (defn data     [] (read-edn "data.edn"))
-(defn parquet-path [table] (str dir "/data/" (name table) ".parquet"))
+(defn parquet-path
+  ([table] (str dir "/data/" (name table) ".parquet"))
+  ([user table] (str dir "/data/redacted/" user "/" (name table) ".parquet")))
+
+(defn redacted-users
+  "Users with a hand-redacted copy of data.edn in dev/fixtures/redacted/."
+  []
+  (sort (keep #(second (re-matches #"(.+)\.edn" (.getName %))) (.listFiles (io/file dir "redacted")))))
+
+(defn redacted [user] (read-edn (str "redacted/" user ".edn")))
 
 (defn duckdb
   "A fresh in-memory DuckDB connection. Close it."
@@ -25,8 +34,8 @@
     (str "CAST(? AS " type ")")))
 
 (defn write-parquet!
-  "Write one table of data.edn to its Parquet file."
-  [conn table {:keys [columns rows]}]
+  "Write one table of data.edn (or of a redacted copy) to `path`."
+  [conn table {:keys [columns rows]} path]
   (with-open [st (.createStatement conn)]
     (.execute st (format "CREATE OR REPLACE TABLE %s (%s)" (name table)
                          (str/join ", " (for [[c t] columns] (str c " " t))))))
@@ -34,14 +43,18 @@
                                                  (str/join ", " (map (comp placeholder second) columns))))]
     (doseq [row rows]
       (doseq [[i v] (map-indexed vector row)]
-        (.setString ps (inc i) (if (coll? v) (str/join "," v) v)))
+        (.setString ps (inc i) (if (coll? v) (str/join "," v) v)))   ; nil → NULL
       (.executeUpdate ps)))
-  (io/make-parents (parquet-path table))
+  (io/make-parents path)
   (with-open [st (.createStatement conn)]
-    (.execute st (format "COPY %s TO '%s' (FORMAT parquet)" (name table) (parquet-path table)))))
+    (.execute st (format "COPY %s TO '%s' (FORMAT parquet)" (name table) path))))
 
 (defn -main [& _]
   (with-open [conn (duckdb)]
     (doseq [[table spec] (data)]
-      (write-parquet! conn table spec)
-      (println "wrote" (parquet-path table) (count (:rows spec)) "rows"))))
+      (write-parquet! conn table spec (parquet-path table))
+      (println "wrote" (parquet-path table) (count (:rows spec)) "rows"))
+    (doseq [user (redacted-users)
+            [table spec] (redacted user)]
+      (write-parquet! conn table spec (parquet-path user table))
+      (println "wrote" (parquet-path user table) (count (:rows spec)) "rows"))))

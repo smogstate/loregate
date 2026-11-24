@@ -47,3 +47,24 @@ Done when the fixture queries return the expected rows and plan ids are stable: 
 - Deferred: `datetime` is UTC only (no TIMESTAMPTZ yet); supplied rows cannot fill JSON
   fields; the plan cache is unbounded; DuckDB external access is limited by the Parquet
   adapter's allowed prefixes, not by DuckDB settings yet; per-run timeout.
+
+## Phase 2 — Rules (2026-11-24)
+
+Done when the redaction-equivalence test (14.3) passes for generated queries and two users:
+**passing** for three users (ana, bob, cleo), 150 generated queries plus fixture queries
+(`clojure -M:test`, 30 tests, 236 assertions).
+
+- Each source CTE has two levels: the inner casts true values; the outer applies the row
+  rule as WHERE and masks fields with CASE. Attributes only rules read are in the inner
+  level and in `:plan/inputs`, never in the output.
+- User-level field rules are evaluated once per run by DuckDB itself (`:plan/checks`), so
+  there is one evaluator; the booleans feed `{:visible rule}` parameters and `:hidden`.
+  Row-level rules give `:partial`; layer row rules other than `true` give `:rows-filtered`.
+- `[:user k]` is typed by what it is compared with and cast to it; an absent attribute is
+  NULL, so the rule is false (fail closed). A layer-enforced type with no row rule is
+  refused (`:compile/no-row-rule`).
+- Redacted copies are written by hand in `dev/fixtures/redacted/<user>.edn`; the test
+  compares rules over real data with no rules over each copy, and checks that crossing
+  users makes it fail.
+- Fixed: `list_contains(coll, x)` bound x's parameters before coll's (phase 1 bug); an
+  unresolved operand crashed the type checker instead of reporting `:compile/unknown-name`.

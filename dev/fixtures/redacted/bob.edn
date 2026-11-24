@@ -1,0 +1,34 @@
+;; data.edn redacted BY HAND for bob (no roles, US, principals user:bob group:legal-us),
+;; per the rules in ontology.edn. Do not generate this.
+;; - clients: region US → c2 c3 c5
+;; - invoices: every row; amount hidden (not role:finance)
+;; - contracts: rows whose readers include user:bob or group:legal-us → k2 k3
+;;   value: visible where value_readers include one of bob's principals → k2 only
+;;   readers, value_readers: role:legal only → hidden
+{:clients
+ {:columns [["id" "VARCHAR"] ["name" "VARCHAR"] ["region" "VARCHAR"] ["attrs" "JSON"]]
+  :rows [["c2" "Globex"   "US" "{\"segment\":\"enterprise\",\"tags\":[\"us\"]}"]
+         ["c3" "Initech"  "US" "{\"segment\":\"smb\",\"tags\":[]}"]
+         ["c5" "Hooli"    "US" "{\"segment\":\"smb\"}"]]}
+
+ :invoices
+ {:columns [["id" "VARCHAR"] ["client_id" "VARCHAR"] ["amount" "DECIMAL(18,2)"]
+            ["due_date" "DATE"] ["status" "VARCHAR"]]
+  :rows [["i01" "c1" nil "2026-08-01" "UNPAID"]
+         ["i02" "c1" nil "2026-09-15" "PAID"]
+         ["i03" "c1" nil "2026-10-01" "UNPAID"]
+         ["i04" "c2" nil "2026-07-20" "UNPAID"]
+         ["i05" "c2" nil "2026-11-30" "UNPAID"]
+         ["i06" "c2" nil "2026-06-01" "PAID"]
+         ["i07" "c3" nil "2026-09-01" "UNPAID"]
+         ["i08" "c3" nil "2026-09-01" "UNPAID"]
+         ["i09" "c4" nil "2026-05-05" "UNPAID"]
+         ["i10" "c4" nil "2026-12-24" "PAID"]
+         ["i11" "c5" nil "2026-10-31" "UNPAID"]
+         ["i12" "c9" nil "2026-08-08" "UNPAID"]]}
+
+ :contracts
+ {:columns [["id" "VARCHAR"] ["client_id" "VARCHAR"] ["value" "DECIMAL(18,2)"]
+            ["readers" "VARCHAR[]"] ["value_readers" "VARCHAR[]"]]
+  :rows [["k2" "c2" "12000.00" nil nil]
+         ["k3" "c3" nil        nil nil]]}}

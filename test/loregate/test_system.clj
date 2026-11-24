@@ -7,7 +7,12 @@
             [loregate.sources.parquet :as pq]))
 
 (def clock {:now #inst "2026-11-24T12:00:00Z" :zone "UTC"})
-(def ana {:user/id "ana" :user/attrs {:principals #{"user:ana"}}})
+(def admin
+  "Sees every row and field the fixture rules allow anyone to see, for engine tests that
+  are not about rules. Rule tests use the fixture users (dev/fixtures/users.edn)."
+  {:user/id "admin"
+   :user/attrs {:roles #{"role:finance" "role:crm-admin" "role:legal"} :region "EU"
+                :principals #{"user:admin" "group:legal-us" "group:legal-eu"}}})
 
 (defn system
   ([] (system {}))
@@ -20,7 +25,7 @@
 (defn run-query
   "Compile and run with the fixed clock; rows or the error."
   [sys q & {:as opts}]
-  (let [res (lg/query sys (merge {:query q :user ana :clock clock} opts))]
+  (let [res (lg/query sys (merge {:query q :user admin :clock clock} opts))]
     (if (:rows res) (:rows res) res)))
 
 (defn ontology-rows

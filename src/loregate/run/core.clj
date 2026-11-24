@@ -78,7 +78,7 @@
   "Rows and notes, or {:error …}. `system` holds :ontology, :sources and :config;
   `opts` :params, :user, :relations (rows per source path, library only) and :clock
   ({:now inst :zone \"…\"}) in place of the system clock."
-  [{:keys [ontology sources config]} plan {:keys [params relations clock]}]
+  [{:keys [ontology sources config]} plan {:keys [params relations clock user]}]
   (let [changed (stale ontology plan)
         p (check-params (:plan/params plan) (or params {}))]
     (cond
@@ -88,12 +88,18 @@
       (let [zone (or (:zone clock) (:zone config))
             now (Instant/ofEpochMilli (.getTime ^Date (or (:now clock) (Date.))))
             today (LocalDate/ofInstant now (ZoneId/of zone))
-            values (mapv (fn [{:keys [value param clock]}]
-                           (cond param (get-in p [:values param])
-                                 (= :now clock) (LocalDateTime/ofInstant now ZoneOffset/UTC)
-                                 (= :today clock) today
-                                 :else (jdbc-value value)))
-                         (:plan/sql-params plan))
+            attrs (:user/attrs user)
+            value-of (fn [visible {:keys [value param clock] :as d}]
+                       (cond param (get-in p [:values param])
+                             (contains? d :user) (get attrs (:user d))      ; absent → NULL → rule false
+                             (contains? d :visible) (get visible (:visible d))
+                             (= :now clock) (LocalDateTime/ofInstant now ZoneOffset/UTC)
+                             (= :today clock) today
+                             :else (jdbc-value value)))
+            {checks-sql :sql checks-params :params check-rules :rules} (:plan/checks plan)
+            visible (zipmap check-rules
+                            (map true? (duck/evaluate checks-sql (mapv #(value-of {} %) checks-params))))
+            values (mapv #(value-of visible %) (:plan/sql-params plan))
             rels (vec (for [[alias s] (sort-by key (:plan/sources plan))]
                         (if (contains? relations (:path s))
                           (supplied-relation alias s (vec (get relations (:path s))))
@@ -117,5 +123,7 @@
                  :notes (cond-> {:plan (:plan/id plan)
                                  :as-of (into {} (for [alias (keys (:plan/sources plan))] [alias now-date]))
                                  :clock {:now now-date :today (str today) :zone zone}
-                                 :hidden #{} :partial #{} :rows-filtered #{}}
+                                 :hidden (into #{} (comp (filter (comp false? val)) (map (comp second key))) visible)
+                                 :partial (into #{} (comp (filter (comp #{:row} val)) (map key)) (get-in plan [:plan/rules :fields]))
+                                 :rows-filtered (get-in plan [:plan/rules :rows])}
                           truncated? (assoc :truncated true))}))))))))

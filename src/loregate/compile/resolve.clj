@@ -57,10 +57,12 @@
         a)))
 
 (defn need!
-  "Record that the source at `path` must provide `attr`; return the column node."
-  [ctx path attr]
-  (swap! ctx update-in [:sources path :needed] conj attr)
-  [::col (get-in @ctx [:sources path :alias]) attr])
+  "Record that the source at `path` must provide `attr` (to the query, or with `rule?` only
+  to its own rules); return the column node."
+  ([ctx path attr] (need! ctx path attr false))
+  ([ctx path attr rule?]
+   (swap! ctx update-in [:sources path (if rule? :rule-needed :needed)] (fnil conj #{}) attr)
+   [::col (get-in @ctx [:sources path :alias]) attr]))
 
 (defn- enum-value? [ctx kw]
   ;; any enum attribute of any type reached so far, or declared at all
@@ -75,12 +77,12 @@
 (defn- resolve-attr
   "A qualified keyword in the scope of a source: stored attribute, derived attribute or
   measure of that source's type, or an enum value."
-  [ctx {:keys [path type stack] :as scope} at kw]
+  [ctx {:keys [path type stack rule?] :as scope} at kw]
   (let [ti (type-info ctx type)
-        d  (some #(when (= kw (:def/id %)) %) (:type/defs ti))]
+        d  (when-not rule? (some #(when (= kw (:def/id %)) %) (:type/defs ti)))]   ; rules read stored attributes only
     (cond
       (contains? (:type/attributes ti) kw)
-      (need! ctx path kw)
+      (need! ctx path kw rule?)
 
       d
       (if (contains? stack kw)
@@ -130,7 +132,9 @@
         sub #(resolve-expr ctx scope at %)]
     (case k
       ::expr/ref     (resolve-attr ctx scope at x)
-      ::expr/path    (resolve-path ctx scope at x)
+      ::expr/path    (if (:rule? scope)
+                       (err! ctx at :compile/bad-path :name (first x) :reason :path-in-rule)
+                       (resolve-path ctx scope at x))
       ::expr/literal [::lit x]
       ::expr/set     [::lit-set x]
       ::expr/local   (let [{:keys [locals stack]} scope

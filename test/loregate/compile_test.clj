@@ -35,11 +35,15 @@
     (testing "the id is the hash of the plan without :plan/compiled-at"
       (is (not= (:plan/compiled-at p1) (:plan/compiled-at (do (Thread/sleep 2) (compile* spec-query)))))
       (is (= (:plan/id p1) (:plan/id (compile* spec-query)))))
-    (testing "a plan holds no user value and pins what it used"
-      (is (= #{} (:plan/user p1)))
+    (testing "a plan holds no user value, names the user attributes its rules read, and pins what it used"
+      (is (= #{:roles :region} (:plan/user p1)))
+      (is (not-any? #(contains? % :value) (filter #(contains? % :user) (:plan/sql-params p1))))
       (is (= #{:biz/invoice :biz/client :biz.invoice/client :biz/days-overdue :biz/unpaid-total
-               :bind/invoices-parquet :bind/clients-parquet}
-             (set (keys (:plan/pins p1))))))))
+               :bind/invoices-parquet :bind/clients-parquet
+               [:rows :biz/invoice] [:rows :biz/client] [:field :biz/amount]}
+             (set (keys (:plan/pins p1)))))
+      (is (= {:rows #{:biz/client} :fields {:biz/amount :user}} (:plan/rules p1))
+          ":rule/allow true filters nothing"))))
 
 (def golden-queries
   {:spec-example spec-query
@@ -68,6 +72,8 @@
         cases [[:compile/invalid-query       (error-of {:from :biz/invoice})]
                [:compile/unknown-name        (error-of (assoc q :select [:biz/nope]))]
                [:compile/unknown-name        (error-of (assoc q :from :biz/nope))]
+               [:compile/unknown-name        (error-of (assoc q :where [:> :biz/nope 1]))]   ; reported, not thrown
+               [:compile/unknown-name        (error-of (assoc q :where [:and [:= :biz/nope :biz/x] [:in :biz/nope #{1}]]))]
                [:compile/bad-path            (error-of (assoc q :select [[:biz.contract/client :biz/client-name]]))]
                [:compile/type-mismatch       (error-of (assoc q :where [:> :biz/client-id 3]))]
                [:compile/type-mismatch       (error-of (assoc q :where [:= :biz/invoice-status :biz/amount]))]
@@ -96,7 +102,7 @@
     (is (= {:stale? true :changed [:biz/unpaid-total]}
            (select-keys (lg/plan-status sys2 {:plan-id id}) [:stale? :changed])))
     (is (= {:error :plan/stale :changed [:biz/unpaid-total]}
-           (lg/run sys2 {:plan-id id :user ts/ana :clock ts/clock})))
+           (lg/run sys2 {:plan-id id :user ts/admin :clock ts/clock})))
     (testing "a plan from another compiler version is stale"
       (swap! (:cache sys) update id assoc :plan/compiler 0)
       (is (= [:plan/compiler] (:changed (lg/plan-status sys {:plan-id id})))))

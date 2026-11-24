@@ -87,18 +87,18 @@
 (deftest implicit-limit-is-reported
   (let [res (lg/query (ts/system {:config {:max-rows 3}})
                       {:query {:from :biz/client :select [:biz/client-id] :sort [[:biz/client-id :asc]]}
-                       :user ts/ana :clock ts/clock})]
+                       :user ts/admin :clock ts/clock})]
     (is (= ["c1" "c2" "c3"] (map :biz/client-id (:rows res))))
     (is (true? (get-in res [:notes :truncated]))))
   (testing "an explicit :limit is not truncation"
     (let [res (lg/query (ts/system {:config {:max-rows 3}})
                         {:query {:from :biz/client :select [:biz/client-id] :limit 4}
-                         :user ts/ana :clock ts/clock})]
+                         :user ts/admin :clock ts/clock})]
       (is (= 4 (count (:rows res))))
       (is (nil? (get-in res [:notes :truncated]))))))
 
 (deftest notes
-  (let [res (lg/query (ts/system) {:query spec-query :user ts/ana :clock ts/clock})]
+  (let [res (lg/query (ts/system) {:query spec-query :user ts/admin :clock ts/clock})]
     (is (= {:now #inst "2026-11-24T12:00:00Z" :today "2026-11-24" :zone "UTC"} (get-in res [:notes :clock])))
     (is (= #{:invoice :client} (set (keys (get-in res [:notes :as-of])))))
     (is (= (get-in res [:notes :plan]) (:plan/id (lg/compile (ts/system) spec-query))))))
@@ -112,40 +112,40 @@
       (is (= [{:path [] :type :biz/invoice
                :attributes #{:biz/amount :biz/client-id :biz/due-date :biz/invoice-status}}
               {:path [:biz.invoice/client] :type :biz/client
-               :attributes #{:biz/client-id :biz/client-name}}]
+               :attributes #{:biz/client-id :biz/client-name :biz/region}}]   ; region: read by the row rule
              (:plan/inputs (lg/compile sys spec-query))
              (:plan/inputs (lg/plan-status sys {:plan-id id}))))
       (is (= (set (keys relations)) (set (map :path (:plan/inputs (lg/compile sys spec-query)))))))
     (is (= (run-query sys spec-query)
-           (:rows (lg/run sys {:plan-id id :user ts/ana :clock ts/clock :relations relations}))))
+           (:rows (lg/run sys {:plan-id id :user ts/admin :clock ts/clock :relations relations}))))
     (testing "a different clock gives a different, deterministic answer"
       (is (= ["Umbrella" "ACME" nil "Globex"]
              (map :biz/client-name
-                  (:rows (lg/run sys {:plan-id id :user ts/ana :relations relations
+                  (:rows (lg/run sys {:plan-id id :user ts/admin :relations relations
                                       :clock {:now #inst "2026-09-10T00:00:00Z" :zone "UTC"}}))))))
     (testing "a value the binding cannot store is a schema mismatch"
       (is (= :source/schema-mismatch
-             (:error (lg/run sys {:plan-id id :user ts/ana :clock ts/clock
+             (:error (lg/run sys {:plan-id id :user ts/admin :clock ts/clock
                                   :relations (assoc relations [] [{:biz/invoice-status :biz.status/void}])}))))
       (is (= :source/schema-mismatch
-             (:error (lg/run sys {:plan-id id :user ts/ana :clock ts/clock
+             (:error (lg/run sys {:plan-id id :user ts/admin :clock ts/clock
                                   :relations (assoc relations [] [{:biz/invoice-status :biz.status/unpaid
                                                                          :biz/amount "not a number"
                                                                          :biz/due-date "2026-01-01"}])})))))))
 
 (deftest params-are-checked
   (let [sys (ts/system)]
-    (is (= :params/invalid (:error (lg/query sys {:query spec-query :params {:min-days -1} :user ts/ana}))))
-    (is (= :params/invalid (:error (lg/query sys {:query spec-query :params {:nope 1} :user ts/ana}))))
-    (is (= :params/invalid (:error (lg/query sys {:query spec-query :params {:min-days "x"} :user ts/ana}))))))
+    (is (= :params/invalid (:error (lg/query sys {:query spec-query :params {:min-days -1} :user ts/admin}))))
+    (is (= :params/invalid (:error (lg/query sys {:query spec-query :params {:nope 1} :user ts/admin}))))
+    (is (= :params/invalid (:error (lg/query sys {:query spec-query :params {:min-days "x"} :user ts/admin}))))))
 
 (deftest run-by-id
   (let [sys (ts/system)
         {:plan/keys [id]} (lg/compile sys spec-query)]
-    (is (= 5 (count (:rows (lg/run sys {:plan-id id :user ts/ana :clock ts/clock})))) "held in the cache")
+    (is (= 5 (count (:rows (lg/run sys {:plan-id id :user ts/admin :clock ts/clock})))) "held in the cache")
     (testing "with no store, a fresh system needs the query and recompiles it"
-      (is (= :plan/not-found (:error (lg/run (ts/system) {:plan-id id :user ts/ana}))))
-      (is (= 5 (count (:rows (lg/run (ts/system) {:plan-id id :query spec-query :user ts/ana :clock ts/clock}))))))
+      (is (= :plan/not-found (:error (lg/run (ts/system) {:plan-id id :user ts/admin}))))
+      (is (= 5 (count (:rows (lg/run (ts/system) {:plan-id id :query spec-query :user ts/admin :clock ts/clock}))))))
     (testing "no user, nothing runs"
       (is (= :auth/missing-token (:error (lg/run sys {:plan-id id})))))))
 

@@ -27,21 +27,29 @@
         (number? v)  {:type :decimal :literal v}))
 
 (defn- coerce
-  "Retarget a literal to the type it is compared with, when that is sound."
+  "Retarget a literal to the type it is compared with, when that is sound; give a user
+  attribute the type it is compared with (it is cast to it at run time)."
   [[ir t] target]
   (let [tt (:type target)]
-    (if (and (= ::r/lit (first ir)) (contains? t :literal))
+    (cond
+      (not (vector? ir)) [ir t]                ; an operand resolution already reported
+
+      (and (= ::r/user (first ir)) (not (#{:user ::error :lit-set :enum-value} tt)))
+      [[::r/user (second ir) (select-keys target [:type :of :scale])] (dissoc target :literal :agg?)]
+
+      (and (= ::r/lit (first ir)) (contains? t :literal))
       (cond
         (and (#{:date :datetime} tt) (string? (:literal t)) (parses? tt (:literal t)))
         [[::r/lit (second ir) tt] (assoc target :literal (:literal t))]
         (and (= :decimal tt) (= :int (:type t)))
         [[::r/lit (second ir) :decimal] (assoc target :literal (:literal t))]
         :else [ir t])
-      [ir t])))
+
+      :else [ir t])))
 
 (defn comparable? [a b]
   (let [[ta tb] [(:type a) (:type b)]]
-    (or (= ::error ta) (= ::error tb)
+    (or (= ::error ta) (= ::error tb) (= :user ta) (= :user tb)
         (and (numeric ta) (numeric tb))
         (and (#{:date :datetime} ta) (#{:date :datetime} tb))
         (and (= ta tb) (#{:string :boolean} ta))
@@ -157,13 +165,18 @@
                    false)
               ;; a literal set compared to dates holds date strings: retarget them
               target (when (#{:date :datetime :decimal} (:type tx)) (:type tx))
-              coll-ir (if (and target (= :lit-set (:type tc))) [::r/lit-set (second (first coll)) target] (first coll))]
+              coll-ir (cond
+                        (and target (= :lit-set (:type tc))) [::r/lit-set (second (first coll)) target]
+                        (= :user (:type tc)) [::r/user (second (first coll)) {:type :set :of (if (= :enum (:type tx)) :string (:type tx))}]
+                        :else (first coll))]
           (result [:in (first x) coll-ir]
                   (if ok {:type :boolean} (err :op :in :found [(:type tx) (:type tc)]))
                   [tx tc]))
 
         (:overlaps :subset)
-        (let [[a b] (map sub (rest ir))]
+        (let [[a b] (map sub (rest ir))
+              set-type (fn [t] (if (= :set (:type t)) (select-keys t [:type :of]) {:type :set :of :string}))
+              b (coerce b (set-type (second a))) a (coerce a (set-type (second b)))]
           (result [(first ir) (first a) (first b)]
                   (if (and (set-like? (second a)) (set-like? (second b)))
                     {:type :boolean}
@@ -171,7 +184,7 @@
                   [(second a) (second b)]))
 
         (:and :or :not)
-        (let [checked (map sub (rest ir)) ts (map second checked)]
+        (let [checked (map #(coerce (sub %) {:type :boolean}) (rest ir)) ts (map second checked)]
           (result (into [(first ir)] (map first checked))
                   (if (every? #(#{:boolean ::error} (:type %)) ts)
                     {:type :boolean}

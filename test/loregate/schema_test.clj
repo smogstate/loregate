@@ -102,6 +102,10 @@
                :biz/unpaid-total (h "d") :biz/days-overdue (h "e")
                :bind/invoices-by-status (h "f") :bind/clients-parquet (h "0")
                [:rows :biz/client] (h "1") [:field :biz/amount] (h "2")}
+   :plan/rules {:rows #{:biz/client} :fields {:biz/amount :user}}
+   :plan/checks {:sql "SELECT CAST(list_contains(CAST(? AS VARCHAR[]), CAST(? AS VARCHAR)) AS BOOLEAN)"
+                 :params [{:user :roles} {:value "role:finance"}]
+                 :rules [[:field :biz/amount]]}
    :plan/compiler 1
    :plan/compiled-at #inst "2026-11-24T20:00:00Z"})
 

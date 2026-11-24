@@ -1,8 +1,11 @@
 #:plan{:id
-       "sha256:b8a0741f3b66c7c44fb6df9035a4d8b974e88f7132dc14482f838ce726196126",
+       "sha256:3ce84dbcbff6f3fd693bfb3c2d10b9aa9e472f3a88d1fc69667db967dfe95344",
        :sql
-       "WITH \"contract\" AS (SELECT CAST(\"id\" AS VARCHAR) AS \"biz/contract-id\", CAST(\"readers\" AS VARCHAR[]) AS \"biz/contract-readers\" FROM \"src_contract\") SELECT CAST(\"contract\".\"biz/contract-id\" AS VARCHAR) AS \"biz/contract-id\" FROM \"contract\" WHERE list_has_all(\"contract\".\"biz/contract-readers\", [CAST(? AS VARCHAR)]) ORDER BY 1 ASC NULLS LAST",
-       :sql-params [{:value "group:legal-us"}],
+       "WITH \"contract\" AS (SELECT \"contract\".\"biz/contract-id\" AS \"biz/contract-id\", CASE WHEN CAST(? AS BOOLEAN) THEN \"contract\".\"biz/contract-readers\" END AS \"biz/contract-readers\" FROM (SELECT CAST(\"id\" AS VARCHAR) AS \"biz/contract-id\", CAST(\"readers\" AS VARCHAR[]) AS \"biz/contract-readers\" FROM \"src_contract\") AS \"contract\" WHERE list_has_any(\"contract\".\"biz/contract-readers\", CAST(? AS VARCHAR[]))) SELECT CAST(\"contract\".\"biz/contract-id\" AS VARCHAR) AS \"biz/contract-id\" FROM \"contract\" WHERE list_has_all(\"contract\".\"biz/contract-readers\", [CAST(? AS VARCHAR)]) ORDER BY 1 ASC NULLS LAST",
+       :sql-params
+       [{:visible [:field :biz/contract-readers]}
+        {:user :principals}
+        {:value "group:legal-us"}],
        :sources
        {:contract
         {:parquet/path "dev/fixtures/data/contracts.parquet",

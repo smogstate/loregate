@@ -1,0 +1,35 @@
+;; data.edn redacted BY HAND for ana (roles finance + crm-admin, EU,
+;; principals user:ana group:finance), per the rules in ontology.edn. Do not generate this.
+;; - clients: crm-admin → every row
+;; - invoices: every row; amount visible (role:finance)
+;; - contracts: rows whose readers include one of ana's principals → k1
+;;   value: visible where value_readers include ana → k1
+;;   readers, value_readers: role:legal only → hidden
+{:clients
+ {:columns [["id" "VARCHAR"] ["name" "VARCHAR"] ["region" "VARCHAR"] ["attrs" "JSON"]]
+  :rows [["c1" "ACME"     "EU" "{\"segment\":\"enterprise\",\"tags\":[\"key\",\"eu\"]}"]
+         ["c2" "Globex"   "US" "{\"segment\":\"enterprise\",\"tags\":[\"us\"]}"]
+         ["c3" "Initech"  "US" "{\"segment\":\"smb\",\"tags\":[]}"]
+         ["c4" "Umbrella" "EU" "{\"tags\":[\"key\"]}"]
+         ["c5" "Hooli"    "US" "{\"segment\":\"smb\"}"]]}
+
+ :invoices
+ {:columns [["id" "VARCHAR"] ["client_id" "VARCHAR"] ["amount" "DECIMAL(18,2)"]
+            ["due_date" "DATE"] ["status" "VARCHAR"]]
+  :rows [["i01" "c1" "1200.00" "2026-08-01" "UNPAID"]
+         ["i02" "c1"  "800.50" "2026-09-15" "PAID"]
+         ["i03" "c1" "3000.00" "2026-10-01" "UNPAID"]
+         ["i04" "c2"  "450.00" "2026-07-20" "UNPAID"]
+         ["i05" "c2"  "990.99" "2026-11-30" "UNPAID"]
+         ["i06" "c2" "1500.00" "2026-06-01" "PAID"]
+         ["i07" "c3"  "300.00" "2026-09-01" "UNPAID"]
+         ["i08" "c3"  "300.00" "2026-09-01" "UNPAID"]
+         ["i09" "c4" "7200.00" "2026-05-05" "UNPAID"]
+         ["i10" "c4"  "100.00" "2026-12-24" "PAID"]
+         ["i11" "c5"  "650.00" "2026-10-31" "UNPAID"]
+         ["i12" "c9"  "999.00" "2026-08-08" "UNPAID"]]}
+
+ :contracts
+ {:columns [["id" "VARCHAR"] ["client_id" "VARCHAR"] ["value" "DECIMAL(18,2)"]
+            ["readers" "VARCHAR[]"] ["value_readers" "VARCHAR[]"]]
+  :rows [["k1" "c1" "50000.00" nil nil]]}}
