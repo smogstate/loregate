@@ -8,4 +8,7 @@
    :zone      "UTC"                 ; time zone of [:now] and [:today]
    :duckdb    {:memory-limit "1GB" :threads 4}
    :source-timeout-ms 10000         ; per fetch source
+   :run-timeout-ms 30000            ; whole run
+   :max-concurrent-runs 4           ; per user; more → :budget/busy
+   :publish/role nil                ; role allowed to publish plans; nil → nobody
    :storage/allowed []})            ; location prefixes Parquet bindings may read

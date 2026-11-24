@@ -77,6 +77,13 @@
   (testing "past the row cap: an error, never a silent truncation"
     (let [decls (mapv #(if (= :bind/invoices-by-status (:binding/id %)) (assoc % :binding/row-cap 3) %) (fx/ontology))]
       (is (= :source/row-cap-exceeded (:error (run (system (atom []) :decls decls) spec-query ts/admin))))))
+  (testing "the whole run has a time budget"
+    (is (= :source/timeout (:error (run (system (atom []) :delay-ms 1000 :config {:run-timeout-ms 100})
+                                        spec-query ts/admin)))))
+  (testing "a user has a limited number of runs at once"
+    (let [sys (system (atom []) :delay-ms 300)
+          runs (doall (repeatedly 6 #(future (:error (run sys spec-query ts/admin)))))]
+      (is (= 2 (count (filter #{:budget/busy} (map deref runs)))) "4 run, 2 are refused")))
   (testing "a query without an output schema cannot be bound"
     (is (contains? (set (map :error (:errors (lg/compile (system (atom []) :no-schema? true) spec-query))))
                    :compile/invalid-binding))))

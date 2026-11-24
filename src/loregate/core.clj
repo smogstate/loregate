@@ -17,7 +17,8 @@
    :sources  sources
    :store    (or store (none/store))
    :config   (merge config/defaults config)
-   :cache    (atom {})})                 ; plan id → plan; ponytail: unbounded, add LRU when it matters
+   :cache    (atom {})
+   :busy     (atom {})})                 ; user id → runs in progress                 ; plan id → plan; ponytail: unbounded, add LRU when it matters
 
 (defn- compile* [sys query]
   (c/compile-query (:ontology sys) query {:sources (:sources sys)
@@ -60,6 +61,24 @@
             :else {:error :plan/stale :changed [] :recompiled (:plan/id p)})))
       {:error :plan/not-found}))
 
+(defn- budgeted
+  "Run `f` within the user's concurrency limit and the run time budget (SPEC 9)."
+  [sys user f]
+  (let [{:keys [max-concurrent-runs run-timeout-ms]} (:config sys)
+        id (:user/id user)
+        busy (:busy sys)]
+    (if (> (get (swap! busy update id (fnil inc 0)) id) max-concurrent-runs)
+      (do (swap! busy update id dec) {:error :budget/busy})
+      (try
+        ;; ponytail: on timeout the abandoned run finishes in the background; cancel the
+        ;; DuckDB statement when that load matters
+        (let [fut (future (f))
+              res (deref fut run-timeout-ms ::timeout)]
+          (if (= ::timeout res)
+            (do (future-cancel fut) {:error :source/timeout})
+            res))
+        (finally (swap! busy update id dec))))))
+
 (defn run
   "Run a plan for a user: rows + notes, or {:error …}. `req`: :plan-id, :params, :user,
   optionally :query (used when the plan is not held). Library only: :relations (rows per
@@ -70,7 +89,7 @@
     (let [plan (load-plan sys plan-id query)]
       (if (or (:error plan) (:errors plan))
         plan
-        (run/run-plan sys plan req)))))
+        (budgeted sys user #(run/run-plan sys plan req))))))
 
 (defn query
   "Compile and run in one step. The plan is cached by id, not stored."
@@ -81,7 +100,7 @@
       (if (:errors plan)
         plan
         (do (swap! (:cache sys) assoc (:plan/id plan) plan)
-            (run/run-plan sys plan req))))))
+            (budgeted sys user #(run/run-plan sys plan req)))))))
 
 (defn- visible? [sys type attr user]
   (let [{:keys [level checks]} (c/field-check (:ontology sys) type attr)]

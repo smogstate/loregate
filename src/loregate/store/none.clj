@@ -7,6 +7,7 @@
   (put-plan!  [_ _] nil)
   (get-plan   [_ _] nil)
   (dependents [_ _] #{})
-  (set-name!  [_ _ _] {:error :store/not-supported}))
+  (set-name!  [_ _ _] {:error :store/not-supported})
+  (names      [_] {}))
 
 (defn store [] (->None))

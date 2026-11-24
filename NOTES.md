@@ -102,3 +102,17 @@ Done when a query joining a fake service and a Parquet file passes 14.3 and 14.5
   through; `:as-of` is the response time.
 - Binding selection also refuses a binding that lacks an attribute a rule reads.
 - Not done: the total-run budget (30 s) and per-user concurrency limit (`:budget/busy`).
+
+## Phase 5 — Graph plan store (2026-11-24)
+
+Done when changing a fixture measure makes its dependents report stale, and only those:
+**passing** (`clojure -M:test`, 43 tests, 313 assertions).
+
+- `loregate.store.graph`: plan nodes and `depends_on` edges (declaration, pinned hash) in a
+  DuckDB file; plan bodies as EDN. Survives a restart: a fresh process runs a stored plan by
+  id without the query. One connection, serialised; one node. Loretile's graph is the
+  multi-node target (its API is not fixed yet).
+- The store port gained names with descriptions (`set-name!` takes `{:name :description}`,
+  `names` lists them) for phase 6.
+- Budgets: per-user concurrent runs (`:budget/busy`) and a whole-run time budget.
+  ponytail: a timed-out run finishes in the background.
