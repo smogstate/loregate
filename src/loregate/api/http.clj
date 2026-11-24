@@ -63,6 +63,16 @@
       (and id (= method "GET") (nil? action))
       (lg/plan-status sys {:plan-id id})
 
+      (and id (= method "PUT") (= action "name"))
+      (read :publish #(lg/publish sys (assoc % :plan-id id :user user)))
+
+      (and id (= method "DELETE") (= action "name"))
+      (lg/unpublish sys {:plan-id id :user user})
+
+      (and (= method "POST") (re-matches #"/api/v1/named/([A-Za-z0-9_-]+)/run" path))
+      (let [n (second (re-matches #"/api/v1/named/([A-Za-z0-9_-]+)/run" path))]
+        (read :request #(lg/run-named sys (assoc % :name n :user user))))
+
       :else {:error :request/invalid :reason :no-such-route})))
 
 (defn handler

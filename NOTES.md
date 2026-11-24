@@ -116,3 +116,15 @@ Done when changing a fixture measure makes its dependents report stale, and only
   `names` lists them) for phase 6.
 - Budgets: per-user concurrent runs (`:budget/busy`) and a whole-run time budget.
   ponytail: a timed-out run finishes in the background.
+
+## Phase 6 — Named plans (2026-11-24)
+
+Done when a named plan returns the same rows as running it by id: **passing**
+(`clojure -M:test`, 45 tests, 328 assertions).
+
+- `publish` / `unpublish` (`PUT`/`DELETE /api/v1/plans/{id}/name`), needing the role in
+  `:publish/role` (unset → nobody) and a store that keeps names (none → 501).
+- `run-named` (`POST /api/v1/named/{name}/run`); `describe` lists named plans with their
+  output and params. Names follow tool-name rules so an agent interface can expose them.
+- No MCP server: HTTP is the only transport in v1 (SPEC 10.1); an MCP adapter would wrap
+  `describe`, `query`, `run` and `run-named` from `loregate.core`.

@@ -133,8 +133,45 @@
           ids (cond (seq types) types
                     search (distinct (map #(if (= :type (:kind %)) (:id %) (:on %)) matches))
                     :else (map :type/id (o/types onto)))]
-      (cond-> {:types (vec (keep #(describe-type sys % user) ids))}
+      (cond-> {:types (vec (keep #(describe-type sys % user) ids))
+               :named (vec (for [[n {:keys [description] :as e}] (sort-by key (store/names (:store sys)))
+                                 :let [p (store/get-plan (:store sys) (:plan/id e))]
+                                 :when p]
+                             {:name n :description description :plan/id (:plan/id p)
+                              :plan/output (:plan/output p) :plan/params (:plan/params p)}))}
         search (assoc :matches matches)))))
+
+(def ^:private name-re #"[A-Za-z0-9_-]{1,64}")   ; tool-name rules, so a name can become an agent tool
+
+(defn- may-publish? [sys user]
+  (let [role (get-in sys [:config :publish/role])]
+    (and role (contains? (set (get-in user [:user/attrs :roles])) role))))
+
+(defn publish
+  "Give a compiled plan a stable name and description (SPEC 10). Needs the role in
+  :publish/role and a store that keeps names."
+  [sys {:keys [plan-id name description user]}]
+  (cond
+    (not user) {:error :auth/missing-token}
+    (not (may-publish? sys user)) {:error :auth/forbidden}
+    (not (and (string? name) (re-matches name-re name))) {:error :request/invalid :reason :bad-name}
+    :else (or (store/set-name! (:store sys) plan-id {:name name :description description})
+              {:name name :plan/id plan-id})))
+
+(defn unpublish
+  "Remove a plan's name."
+  [sys {:keys [plan-id user]}]
+  (cond
+    (not user) {:error :auth/missing-token}
+    (not (may-publish? sys user)) {:error :auth/forbidden}
+    :else (or (store/set-name! (:store sys) plan-id nil) {:plan/id plan-id})))
+
+(defn run-named
+  "Run a named plan: like run, by name."
+  [sys {:keys [name] :as req}]
+  (if-let [id (get-in (store/names (:store sys)) [name :plan/id])]
+    (run sys (assoc req :plan-id id))
+    {:error :plan/not-found}))
 
 (defn plan-status
   "Output, params, pins and staleness of a plan. Depends on no user's rights."

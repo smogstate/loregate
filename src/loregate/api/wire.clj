@@ -79,9 +79,13 @@
                :query (->query v)
                :request (cond-> {}
                           (get v "query") (assoc :query (->query (get v "query")))
-                          (get v "params") (assoc :params (->params (get v "params")))))})
+                          (get v "params") (assoc :params (->params (get v "params"))))
+               :publish {:name (get v "name") :description (get v "description")})})
       (let [v (edn/read-string (or body ""))]
-        {:ok (if (= kind :request) (select-keys v [:query :params]) v)}))
+        {:ok (case kind
+               :request (select-keys v [:query :params])
+               :publish (select-keys v [:name :description])
+               v)}))
     (catch Exception _ {:error :request/invalid})))
 
 ;; ------------------------------------------------------------ out
