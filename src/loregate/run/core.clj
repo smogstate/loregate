@@ -1,13 +1,15 @@
 (ns loregate.run.core
   "Execute a plan for a user (SPEC 9): check pins, validate params, fix the clock, attach
   the sources, run DuckDB, shape rows and notes."
-  (:require [loregate.compile.core :as compile]
+  (:require [clojure.data.json :as json]
+            [loregate.compile.core :as compile]
             [loregate.compile.sql :as sql]
             [loregate.ontology.port :as o]
             [loregate.run.duck :as duck]
             [loregate.sources.port :as src])
   (:import (java.time Instant LocalDate LocalDateTime ZoneId ZoneOffset)
-           (java.util Date)))
+           (java.util Date)
+           (java.util.concurrent Executors TimeUnit TimeoutException)))
 
 (defn stale
   "Ids whose pin differs from the ontology now, plus :plan/compiler if the compiler
@@ -67,6 +69,50 @@
           (catch clojure.lang.ExceptionInfo e
             {:error :source/schema-mismatch :detail (ex-data e)}))))))
 
+(defn- wire-arg
+  "A pushed filter as the service receives it (SPEC 12.1): = a value, :in a list, any other
+  operator {\"op\" … \"value\" …}."
+  [{:keys [op value]} resolve]
+  (let [v (if (vector? value) (mapv resolve value) (resolve value))]
+    (case op
+      := v
+      :in v
+      {"op" (name op) "value" v})))
+
+(defn- fetched-relation
+  "Rows a fetch source returned (storage names) → a relation. Columns read through a JSON
+  path hold JSON text; other array values are lists."
+  [alias {:keys [fields]} rows]
+  (let [json-cols (set (keep #(when (vector? %) (first %)) (vals fields)))
+        cols (sort (set (map #(if (vector? %) (first %) %) (vals fields))))
+        cell (fn [c v] (cond (nil? v) nil
+                             (json-cols c) (json/write-str v)
+                             :else v))]
+    {:alias alias
+     :columns (mapv (fn [c] [c (and (not (json-cols c)) (boolean (some #(sequential? (get % c)) rows)))]) cols)
+     :rows (mapv (fn [row] (mapv #(cell % (get row %)) cols)) rows)}))
+
+(defn- fetch-all
+  "Fetch every fetch source in parallel on virtual threads, each within `timeout-ms`.
+  A source whose pushed filter names a field hidden from this user is not called and
+  yields no rows (SPEC 8.3). → {alias relation-or-error}."
+  [sources plan-sources user visible resolve timeout-ms]
+  (with-open [ex (Executors/newVirtualThreadPerTaskExecutor)]
+    (let [tasks (for [[alias s] plan-sources]
+                  [alias (.submit ex ^Callable
+                                  (fn []
+                                    (if (some #(false? (get visible [:field (:attribute %)])) (:pushed s))
+                                      (fetched-relation alias s [])
+                                      (let [args (into {} (for [a (get-in s [:call :args])] [(:arg a) (wire-arg a resolve)]))
+                                            res (src/fetch (get sources (:kind s)) s args user)]
+                                        (if (:error res)
+                                          res
+                                          (assoc (fetched-relation alias s (:rows res)) :as-of (:as-of res)))))))])]
+      (into {} (for [[alias fut] (doall tasks)]
+                 [alias (try (.get ^java.util.concurrent.Future fut timeout-ms TimeUnit/MILLISECONDS)
+                             (catch TimeoutException _ (.cancel ^java.util.concurrent.Future fut true) {:error :source/timeout})
+                             (catch Exception _ {:error :source/unavailable}))])))))
+
 (defn- shape-value [{:keys [type]} v]
   (cond (nil? v) nil
         (= :enum type) (keyword v)
@@ -107,10 +153,16 @@
             visible (zipmap check-rules
                             (map true? (duck/evaluate checks-sql (mapv #(value-of {} %) checks-params))))
             values (mapv #(value-of visible %) (:plan/sql-params plan))
+            resolve-arg (fn [d] (let [v (value-of visible d)] (if (instance? LocalDate v) (str v) v)))
+            to-fetch (into {} (filter (fn [[_ s]] (and (not (contains? relations (:path s)))
+                                                       (:fetch (src/relation (get sources (:kind s)) s)))))
+                           (:plan/sources plan))
+            fetched (fetch-all sources to-fetch user visible resolve-arg (:source-timeout-ms config))
             rels (vec (for [[alias s] (sort-by key (:plan/sources plan))]
-                        (if (contains? relations (:path s))
-                          (supplied-relation alias s (vec (get relations (:path s))))
-                          (assoc (src/relation (get sources (:kind s)) s) :alias alias))))
+                        (cond
+                          (contains? relations (:path s)) (supplied-relation alias s (vec (get relations (:path s))))
+                          (contains? fetched alias) (get fetched alias)
+                          :else (assoc (src/relation (get sources (:kind s)) s) :alias alias))))
             explicit-limit? (contains? (:plan/query plan) :limit)
             max-rows (if explicit-limit? Long/MAX_VALUE (:max-rows config))]
         (if-let [e (some #(when (:error %) %) rels)]
@@ -128,7 +180,7 @@
                 {:rows (mapv (fn [r] (into {} (map (fn [c v] [(:name c) (shape-value c v)]) out r))) rows)
                  :columns out
                  :notes (cond-> {:plan (:plan/id plan)
-                                 :as-of (into {} (for [alias (keys (:plan/sources plan))] [alias now-date]))
+                                 :as-of (into {} (for [r rels] [(:alias r) (or (:as-of r) now-date)]))
                                  :clock {:now now-date :today (str today) :zone zone}
                                  :hidden (into #{} (comp (filter (comp false? val)) (map (comp second key))) visible)
                                  :partial (into #{} (comp (filter (comp #{:row} val)) (map key)) (get-in plan [:plan/rules :fields]))

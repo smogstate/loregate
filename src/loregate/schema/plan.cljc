@@ -21,7 +21,9 @@
    [:type qualified-keyword?]
    [:binding qualified-keyword?]
    [:fields [:map-of qualified-keyword? ont/Field]]
-   [:call {:optional true} [:map [:args [:map-of string? any?]]]]
+   [:call {:optional true} [:map
+                            [:service string?] [:query string?]
+                            [:args [:vector [:map [:arg string?] [:op keyword?] [:value any?]]]]]]
    [:pushed {:optional true} [:vector [:map {:closed true}
                                        [:attribute qualified-keyword?]
                                        [:op (into [:enum] ont/pushable-ops)]]]]

@@ -79,7 +79,8 @@
    :plan/query spec-query
    :plan/sources
    {:inv {:kind :service :type :biz/invoice :path [] :binding :bind/invoices-by-status
-          :call {:service "invoicing" :query "invoices_by_status" :args {"status" "UNPAID"}}
+          :call {:service "invoicing" :query "invoices_by_status"
+                 :args [{:arg "status" :op := :value {:value "UNPAID"}}]}
           :pushed [{:attribute :biz/invoice-status :op :=}]
           :fields {:biz/client-id "client_id" :biz/amount "amount" :biz/due-date "due_date"
                    :biz/invoice-status "status"}

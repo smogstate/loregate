@@ -152,6 +152,10 @@
                               (merge {:alias alias :type type :type-info ti :binding bnd :needed needed :link link :path path
                                       :parent-alias (when parent (get-in @ctx [:sources parent :alias]))}
                                      (source-rules ctx env path ti bnd needed)))))]
+            (doseq [{:keys [path binding]} (filter map? srcs)
+                    a (get-in @ctx [:sources path :rule-needed])
+                    :when (not (contains? (:binding/fields binding) a))]
+              (r/err! ctx [:from] :compile/no-binding :binding (:binding/id binding) :reason :rule-attribute-not-bound :attribute a))
             (if-let [errors (seq (:errors @ctx))]
               {:errors (vec errors)}
               (let [srcs (mapv #(assoc % :rule-needed (get-in @ctx [:sources (:path %) :rule-needed])) srcs)
@@ -167,15 +171,23 @@
                     pin-ids (concat (map :type srcs) (:links @ctx) (:defs @ctx) (map (comp :binding/id :binding) srcs)
                                     rule-ids)
                     plan {:plan/query q
-                          :plan/sources (into {} (for [{:keys [alias type binding path] :as s} srcs
-                                                       :let [needed (into (set (:needed s)) (:rule-needed s))]]
+                          :plan/sources (into {} (for [{:keys [alias type binding path field-rules] :as s} srcs
+                                                       :let [needed (into (set (:needed s)) (:rule-needed s))
+                                                             pushed (when (= :service (:binding/kind binding))
+                                                                      (b/pushdown binding (get filters alias)
+                                                                                  #(= :row (get-in field-rules [% :level]))))]]
                                                    [alias (cond-> (merge (into {} (remove (comp #{"binding"} namespace key)) binding)
                                                                          {:kind (:binding/kind binding) :type type :path path
                                                                           :binding (:binding/id binding)
                                                                           :fields (select-keys (:binding/fields binding) needed)})
                                                             (seq (select-keys (:binding/values binding) needed))
                                                             (assoc :values (select-keys (:binding/values binding) needed))
-                                                            (:binding/row-cap binding) (assoc :row-cap (:binding/row-cap binding)))]))
+                                                            (:binding/row-cap binding) (assoc :row-cap (:binding/row-cap binding))
+                                                            (= :service (:binding/kind binding))
+                                                            (assoc :call {:service (:service/name binding)
+                                                                          :query (:service/query binding)
+                                                                          :args (mapv #(dissoc % :attribute) pushed)}
+                                                                   :pushed (mapv #(select-keys % [:attribute :op]) pushed)))]))
                           :plan/sql sql
                           :plan/sql-params params
                           :plan/params (or (:params q) {})

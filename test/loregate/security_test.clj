@@ -25,8 +25,8 @@
           (for [d decls :when (:type/id d)]
             {:rule/on (:type/id d) :rule/kind :rows :rule/allow true}))))
 
-(def ^:private real (ts/system))
-(def ^:private open (into {} (for [u (fx/redacted-users)] [u (ts/system {:decls (open-ontology u)})])))
+(def real (ts/system))
+(def open (into {} (for [u (fx/redacted-users)] [u (ts/system {:decls (open-ontology u)})])))
 
 (defn- rows [sys q user]
   (let [res (lg/query sys {:query q :user user :clock ts/clock})]

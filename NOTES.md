@@ -85,3 +85,20 @@ talks to the server over a socket).
   `org.clojure/data.json` (pure Clojure).
 - `describe`: types, attributes with `:visible?` true/false/:per-row for the caller (user-level
   rules evaluated by DuckDB, as in runs), links, definitions, commands; never bindings or rules.
+
+## Phase 4 — Service bindings (2026-11-24)
+
+Done when a query joining a fake service and a Parquet file passes 14.3 and 14.5:
+**passing** (`clojure -M:test`, 40 tests, 293 assertions).
+
+- `loregate.sources.service`: fetch adapter over a `Transport`; the shipped HTTP transport
+  (contract in SPEC 12.1) is tested against a real socket; the fake in
+  `test/loregate/fake_service.clj` pages, records calls, and can time out, break or vanish.
+- Pushdown: accepted filters, never on an attribute with a row-level field rule, one per
+  argument; enum values in stored form; params filled at run time. 8.3: a source whose
+  pushed filter names a field hidden from the user is not called and yields no rows.
+- Run: fetch sources in parallel on virtual threads, per-source timeout; rows checked
+  against the output schema; row cap is an error, never truncation; caller's token passed
+  through; `:as-of` is the response time.
+- Binding selection also refuses a binding that lacks an attribute a rule reads.
+- Not done: the total-run budget (30 s) and per-user concurrency limit (`:budget/busy`).

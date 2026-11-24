@@ -7,4 +7,5 @@
    :max-rows  10000                 ; rows returned when a query sets no :limit
    :zone      "UTC"                 ; time zone of [:now] and [:today]
    :duckdb    {:memory-limit "1GB" :threads 4}
+   :source-timeout-ms 10000         ; per fetch source
    :storage/allowed []})            ; location prefixes Parquet bindings may read
