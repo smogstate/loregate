@@ -34,6 +34,11 @@
    [:plan/query query/Query]
    [:plan/sources [:map-of simple-keyword? Source]]
    [:plan/sql string?]
+   [:plan/sql-params [:vector [:or [:map {:closed true} [:value any?]]
+                               [:map {:closed true} [:param simple-keyword?]]
+                               [:map {:closed true} [:clock [:enum :now :today]]]
+                               [:map {:closed true} [:user simple-keyword?]]
+                               [:map {:closed true} [:visible RuleId]]]]]
    [:plan/params [:map-of simple-keyword? query/ParamDef]]
    [:plan/user [:set simple-keyword?]]
    [:plan/requires [:map {:closed true}

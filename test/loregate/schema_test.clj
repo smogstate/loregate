@@ -88,6 +88,8 @@
          :path "s3://lake/crm/clients/*.parquet"
          :fields {:biz/client-id "id" :biz/client-name "name" :biz/region "region"}}}
    :plan/sql "WITH inv AS (…) SELECT …"
+   :plan/sql-params [{:value "UNPAID"} {:param :min-days} {:clock :today} {:user :roles}
+                     {:visible [:field :biz/amount]}]
    :plan/params {:min-days {:type :int :default 30 :min 0}}
    :plan/user #{:roles :region}
    :plan/requires {:fields #{:biz/amount :biz/client-name :biz/client-id :biz/due-date

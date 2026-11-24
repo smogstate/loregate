@@ -23,7 +23,9 @@
   :type/attributes
   {:biz/client-id   {:type :string}
    :biz/client-name {:type :string}
-   :biz/region      {:type :string}}}
+   :biz/region      {:type :string}
+   :biz/client-segment {:type :string}                 ; from the JSON column attrs
+   :biz/client-tags    {:type :set :of :string}}}
 
  {:type/id    :biz/contract
   :type/title "Contract"
@@ -91,7 +93,9 @@
   :binding/type :biz/client
   :binding/kind :parquet
   :parquet/path "dev/fixtures/data/clients.parquet"
-  :binding/fields {:biz/client-id "id" :biz/client-name "name" :biz/region "region"}
+  :binding/fields {:biz/client-id "id" :biz/client-name "name" :biz/region "region"
+                   :biz/client-segment ["attrs" "$.segment"]
+                   :biz/client-tags    ["attrs" "$.tags[*]"]}
   :binding/rows-enforced-by :layer}
 
  {:binding/id   :bind/contracts-parquet

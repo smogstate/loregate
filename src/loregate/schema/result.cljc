@@ -12,7 +12,8 @@
             [:zone string?]]]
    [:hidden [:set qualified-keyword?]]
    [:partial [:set qualified-keyword?]]
-   [:rows-filtered [:set qualified-keyword?]]])
+   [:rows-filtered [:set qualified-keyword?]]
+   [:truncated {:optional true} boolean?]])
 
 (def Result
   [:map {:closed true}

@@ -1,0 +1,42 @@
+#:plan{:id
+       "sha256:4e68d4faa011350a3775e2ebfda9007fcbb853b3e530101cb42b66acf11773ff",
+       :sql
+       "WITH \"invoice\" AS (SELECT CAST(\"amount\" AS DECIMAL(38,2)) AS \"biz/amount\", CAST(\"client_id\" AS VARCHAR) AS \"biz/client-id\", CAST(\"due_date\" AS DATE) AS \"biz/due-date\", CASE WHEN \"status\" IS NULL THEN NULL WHEN \"status\" = CAST(? AS VARCHAR) THEN CAST(? AS VARCHAR) WHEN \"status\" = CAST(? AS VARCHAR) THEN CAST(? AS VARCHAR) ELSE error('loregate:schema-mismatch') END AS \"biz/invoice-status\" FROM \"src_invoice\"), \"client\" AS (SELECT CAST(\"id\" AS VARCHAR) AS \"biz/client-id\", CAST(\"name\" AS VARCHAR) AS \"biz/client-name\" FROM \"src_client\") SELECT CAST(\"client\".\"biz/client-name\" AS VARCHAR) AS \"biz/client-name\", CAST(sum(\"invoice\".\"biz/amount\") FILTER (WHERE (\"invoice\".\"biz/invoice-status\" = CAST(? AS VARCHAR))) AS DECIMAL(38,2)) AS \"biz/unpaid-total\", CAST(count(*) AS BIGINT) AS \"n\" FROM \"invoice\" LEFT JOIN \"client\" ON \"invoice\".\"biz/client-id\" = \"client\".\"biz/client-id\" WHERE ((\"invoice\".\"biz/invoice-status\" = CAST(? AS VARCHAR)) AND (date_diff('day', CAST(\"invoice\".\"biz/due-date\" AS DATE), CAST(CAST(? AS DATE) AS DATE)) > CAST(? AS BIGINT))) GROUP BY 1 HAVING (sum(\"invoice\".\"biz/amount\") FILTER (WHERE (\"invoice\".\"biz/invoice-status\" = CAST(? AS VARCHAR))) > CAST(? AS DECIMAL(38,6))) ORDER BY 2 DESC NULLS LAST, 1 ASC NULLS LAST, 3 ASC NULLS LAST LIMIT 50",
+       :sql-params
+       [{:value "PAID"}
+        {:value :biz.status/paid}
+        {:value "UNPAID"}
+        {:value :biz.status/unpaid}
+        {:value :biz.status/unpaid}
+        {:value :biz.status/unpaid}
+        {:clock :today}
+        {:param :min-days}
+        {:value :biz.status/unpaid}
+        {:value 0}],
+       :sources
+       {:invoice
+        {:parquet/path "dev/fixtures/data/invoices.parquet",
+         :kind :parquet,
+         :type :biz/invoice,
+         :binding :bind/invoices-parquet,
+         :fields
+         #:biz{:due-date "due_date",
+               :client-id "client_id",
+               :amount "amount",
+               :invoice-status "status"},
+         :values
+         #:biz{:invoice-status
+               #:biz.status{:paid "PAID", :unpaid "UNPAID"}}},
+        :client
+        {:parquet/path "dev/fixtures/data/clients.parquet",
+         :kind :parquet,
+         :type :biz/client,
+         :binding :bind/clients-parquet,
+         :fields #:biz{:client-id "id", :client-name "name"}}},
+       :output
+       [{:name :biz/client-name, :type :string, :owned? true}
+        {:name :biz/unpaid-total,
+         :type :decimal,
+         :owned? true,
+         :unit :currency/eur}
+        {:name :n, :type :int, :owned? false}]}

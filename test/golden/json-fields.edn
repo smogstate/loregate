@@ -1,0 +1,21 @@
+#:plan{:id
+       "sha256:024b38d91bce64862466dd11c4e3f7d3cd3da61c6dabe188336e698a44b4d710",
+       :sql
+       "WITH \"client\" AS (SELECT CAST(\"name\" AS VARCHAR) AS \"biz/client-name\", CAST(json_extract_string(\"attrs\", '$.segment') AS VARCHAR) AS \"biz/client-segment\", CAST(json_extract_string(\"attrs\", '$.tags[*]') AS VARCHAR[]) AS \"biz/client-tags\" FROM \"src_client\") SELECT CAST(\"client\".\"biz/client-name\" AS VARCHAR) AS \"biz/client-name\", CAST(\"client\".\"biz/client-tags\" AS VARCHAR[]) AS \"biz/client-tags\" FROM \"client\" WHERE (\"client\".\"biz/client-segment\" = CAST(? AS VARCHAR)) ORDER BY 1 ASC NULLS LAST, 2 ASC NULLS LAST",
+       :sql-params [{:value "smb"}],
+       :sources
+       {:client
+        {:parquet/path "dev/fixtures/data/clients.parquet",
+         :kind :parquet,
+         :type :biz/client,
+         :binding :bind/clients-parquet,
+         :fields
+         #:biz{:client-segment ["attrs" "$.segment"],
+               :client-name "name",
+               :client-tags ["attrs" "$.tags[*]"]}}},
+       :output
+       [{:name :biz/client-name, :type :string, :owned? true}
+        {:name :biz/client-tags,
+         :type :set,
+         :owned? true,
+         :of :string}]}

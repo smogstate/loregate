@@ -1,0 +1,14 @@
+#:plan{:id
+       "sha256:88c860bd04f9514a36e4dfb3f3958e95884de16eb4a5f0f049b044b42d1fccd6",
+       :sql
+       "WITH \"contract\" AS (SELECT CAST(\"id\" AS VARCHAR) AS \"biz/contract-id\", CAST(\"readers\" AS VARCHAR[]) AS \"biz/contract-readers\" FROM \"src_contract\") SELECT CAST(\"contract\".\"biz/contract-id\" AS VARCHAR) AS \"biz/contract-id\" FROM \"contract\" WHERE list_has_all(\"contract\".\"biz/contract-readers\", [CAST(? AS VARCHAR)]) ORDER BY 1 ASC NULLS LAST",
+       :sql-params [{:value "group:legal-us"}],
+       :sources
+       {:contract
+        {:parquet/path "dev/fixtures/data/contracts.parquet",
+         :kind :parquet,
+         :type :biz/contract,
+         :binding :bind/contracts-parquet,
+         :fields
+         #:biz{:contract-readers "readers", :contract-id "id"}}},
+       :output [{:name :biz/contract-id, :type :string, :owned? true}]}

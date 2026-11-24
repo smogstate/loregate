@@ -1,0 +1,128 @@
+(ns loregate.compile.core
+  "Query → plan (SPEC 7). Pure and deterministic: the same query against the same
+  declarations yields the same plan id. Errors are data: {:errors [{:error … :at …}]}."
+  (:require [malli.core :as m]
+            [malli.error :as me]
+            [loregate.compile.binding :as b]
+            [loregate.compile.resolve :as r]
+            [loregate.compile.sql :as sql]
+            [loregate.compile.typecheck :as tc]
+            [loregate.hash :as h]
+            [loregate.ontology.port :as o]
+            [loregate.schema.expr :as expr]
+            [loregate.schema.query :as query]
+            [loregate.sources.port :as src]))
+
+(def version
+  "Bump whenever a change alters generated plans: older plans then read as stale (SPEC 9)."
+  1)
+
+(defn- item-name [x]
+  (if (= ::expr/path (expr/kind x)) (last x) x))
+
+(defn- nodes [ir] (filter vector? (tree-seq vector? seq ir)))
+(defn- has? [pred ir] (some pred (nodes ir)))
+
+(defn- ungrouped-cols
+  "Column nodes of `ir` outside any aggregate."
+  [ir]
+  (cond (not (vector? ir)) nil
+        (= ::r/agg (first ir)) nil
+        (= ::r/col (first ir)) [ir]
+        :else (mapcat ungrouped-cols (rest ir))))
+
+(defn- column [{:keys [name type owned?]}]
+  (cond-> {:name name :type (:type type) :owned? owned?}
+    (= :set (:type type)) (assoc :of (:of type))
+    (:unit type) (assoc :unit (:unit type))))
+
+(defn compile-query
+  "A plan, or {:errors […]}. Options: :sources {kind adapter} (registered source adapters),
+  :max-limit (default 10000), :now (for :plan/compiled-at)."
+  [onto q {:keys [sources max-limit now] :or {max-limit 10000}}]
+  (if-let [e (m/explain query/Query q)]
+    {:errors [{:error :compile/invalid-query :at [] :details (me/humanize e)}]}
+    (let [ctx (r/new-ctx onto q)
+          root (:from q)]
+      (if-not (o/type-of onto root)
+        {:errors [{:error :compile/unknown-name :at [:from] :name root}]}
+        (let [_ (when (and (:limit q) (> (:limit q) max-limit))
+                  (r/err! ctx [:limit] :compile/limit-too-large :max max-limit))
+              _ (r/source! ctx [] root nil)
+              scope {:path [] :type root :stack #{} :filter nil :measures? true :locals (:let q)}
+              items (vec (map-indexed
+                          (fn [i x] {:name (item-name x) :owned? (not= ::expr/local (expr/kind x))
+                                     :item x :at [:select i]
+                                     :ir (r/resolve-expr ctx scope [:select i] x)})
+                          (:select q)))
+              where (some->> (:where q) (r/resolve-expr ctx scope [:where]))
+              having (some->> (:having q) (r/resolve-expr ctx scope [:having]))
+              alias-types (into {} (map (juxt :alias :type)) (vals (:sources @ctx)))
+              env {:params (:params q) :alias-types alias-types}
+              typed (fn [ir at] (tc/check ctx env at ir))
+              items (mapv (fn [{:keys [ir at] :as it}] (let [[ir' t] (typed ir at)] (assoc it :ir ir' :type t))) items)
+              [where wt] (some-> where (typed [:where]))
+              [having ht] (some-> having (typed [:having]))
+              grouped? (or (some (comp :agg? :type) items) (some? having))
+              group (when grouped? (vec (keep-indexed (fn [i it] (when-not (:agg? (:type it)) (inc i))) items)))]
+          (doseq [[n its] (group-by :name items) :when (> (count its) 1)]
+            (r/err! ctx (:at (second its)) :compile/duplicate-column :name n))
+          (when where
+            (cond (:agg? wt) (r/err! ctx [:where] :compile/aggregate-in-where)
+                  (not (#{:boolean ::tc/error} (:type wt))) (r/err! ctx [:where] :compile/type-mismatch :found (:type wt))))
+          (when having
+            (when-not (#{:boolean ::tc/error} (:type ht)) (r/err! ctx [:having] :compile/type-mismatch :found (:type ht)))
+            (let [keys (map #(:ir (nth items (dec %))) group)]
+              (doseq [c (ungrouped-cols having)
+                      :when (not-any? #(has? #{c} %) keys)]
+                (r/err! ctx [:having] :compile/type-mismatch :reason :not-grouped :column (nth c 2)))))
+          (let [sort-pos (vec (keep-indexed
+                               (fn [i [x dir]]
+                                 (if-let [pos (some (fn [[j it]] (when (= x (:item it)) (inc j))) (map-indexed vector items))]
+                                   [pos dir]
+                                   (do (r/err! ctx [:sort i] :compile/sort-not-selected :name x) nil)))
+                               (:sort q)))
+                order (into sort-pos (for [i (range 1 (inc (count items)))
+                                           :when (not-any? #(= i (first %)) sort-pos)]
+                                       [i :asc]))
+                kinds (set (keys sources))
+                filters (group-by :alias (b/filters where))
+                srcs (vec (for [path (:order @ctx)
+                                :let [{:keys [alias type needed parent link]} (get-in @ctx [:sources path])
+                                      ti (r/type-info ctx type)
+                                      bnd (b/choose (:type/bindings ti) needed (get filters alias) kinds)]]
+                            (cond
+                              (nil? bnd)
+                              (r/err! ctx [:from] :compile/no-binding :type type :path path)
+                              (seq (src/check (get sources (:binding/kind bnd)) bnd))
+                              (r/err! ctx [:from] :compile/invalid-binding :binding (:binding/id bnd)
+                                      :details (src/check (get sources (:binding/kind bnd)) bnd))
+                              :else
+                              {:alias alias :type type :type-info ti :binding bnd :needed needed :link link
+                               :parent-alias (when parent (get-in @ctx [:sources parent :alias]))})))]
+            (if-let [errors (seq (:errors @ctx))]
+              {:errors (vec errors)}
+              (let [{:keys [sql params]} (sql/generate {:sources srcs :select items :where where :having having
+                                                        :group group :order order :limit (:limit q)
+                                                        :params (:params q)})
+                    pin-ids (concat (map :type srcs) (:links @ctx) (:defs @ctx) (map (comp :binding/id :binding) srcs))
+                    plan {:plan/query q
+                          :plan/sources (into {} (for [{:keys [alias type binding needed]} srcs]
+                                                   [alias (cond-> (merge (into {} (remove (comp #{"binding"} namespace key)) binding)
+                                                                         {:kind (:binding/kind binding) :type type
+                                                                          :binding (:binding/id binding)
+                                                                          :fields (select-keys (:binding/fields binding) needed)})
+                                                            (seq (select-keys (:binding/values binding) needed))
+                                                            (assoc :values (select-keys (:binding/values binding) needed))
+                                                            (:binding/row-cap binding) (assoc :row-cap (:binding/row-cap binding)))]))
+                          :plan/sql sql
+                          :plan/sql-params params
+                          :plan/params (or (:params q) {})
+                          :plan/user #{}
+                          :plan/requires {:fields (into #{} (mapcat :needed) srcs) :rules #{}}
+                          :plan/output (mapv column items)
+                          :plan/pins (into {} (for [id pin-ids] [id (o/hash-of onto id)]))
+                          :plan/compiler version}]
+                (assoc plan
+                       :plan/id (h/sha256 plan)
+                       :plan/compiled-at (or now (java.util.Date.)))))))))))

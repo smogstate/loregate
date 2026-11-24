@@ -24,7 +24,8 @@
               table (keyword (re-find #"[a-z]+(?=\.parquet$)" path))
               rows (query conn (format "SELECT * FROM read_parquet('%s')" path))]
           (is (= (count (get-in (fx/data) [table :rows])) (count rows)))
-          (is (= (set (vals fields)) (set (keys (first rows)))) "columns are exactly the mapped fields")
+          (is (= (set (map #(if (vector? %) (first %) %) (vals fields))) (set (keys (first rows))))
+              "columns are exactly the mapped fields")
           (doseq [[attr mapping] values]
             (is (every? (set (vals mapping)) (map #(get % (fields attr)) rows))
                 (str attr " has an unmapped stored value"))))))))

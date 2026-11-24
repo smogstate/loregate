@@ -5,7 +5,8 @@ language that names business types, attributes and measures; Loregate checks the
 against the ontology, applies the caller's row and field rules, reads from query services
 and Parquet datasets, and returns rows.
 
-Status: early. Schemas, ports and fixtures exist; nothing compiles or runs queries yet.
+Status: early. Queries compile to plans and run over Parquet through the library
+(`loregate.core`); row and field rules, HTTP and service sources are next.
 
 ## Development
 

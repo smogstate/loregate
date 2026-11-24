@@ -1,12 +1,12 @@
 ;; Source rows for dev/fixtures/data/*.parquet, in storage terms (column names and stored
 ;; values as the bindings map them). Regenerate with: clojure -M:fixtures
 {:clients
- {:columns [["id" "VARCHAR"] ["name" "VARCHAR"] ["region" "VARCHAR"]]
-  :rows [["c1" "ACME"     "EU"]
-         ["c2" "Globex"   "US"]
-         ["c3" "Initech"  "US"]
-         ["c4" "Umbrella" "EU"]
-         ["c5" "Hooli"    "US"]]}
+ {:columns [["id" "VARCHAR"] ["name" "VARCHAR"] ["region" "VARCHAR"] ["attrs" "JSON"]]
+  :rows [["c1" "ACME"     "EU" "{\"segment\":\"enterprise\",\"tags\":[\"key\",\"eu\"]}"]
+         ["c2" "Globex"   "US" "{\"segment\":\"enterprise\",\"tags\":[\"us\"]}"]
+         ["c3" "Initech"  "US" "{\"segment\":\"smb\",\"tags\":[]}"]
+         ["c4" "Umbrella" "EU" "{\"tags\":[\"key\"]}"]
+         ["c5" "Hooli"    "US" "{\"segment\":\"smb\"}"]]}
 
  :invoices
  {:columns [["id" "VARCHAR"] ["client_id" "VARCHAR"] ["amount" "DECIMAL(18,2)"]
